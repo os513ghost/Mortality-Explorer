@@ -1195,7 +1195,8 @@ function buildAnnualChart() {
 
   renderChart(labels, datasets, {
     xTickCb: (val,idx) => labels[idx],
-    yLabel: 'Sum ASMR / 100k'
+    yLabel: 'Sum ASMR / 100k',
+    xAutoSkip: true, xMaxRotation: 45
   });
 }
 
@@ -1243,13 +1244,14 @@ function buildSeasonalChart() {
 
   renderChart(labels, datasets, {
     xTickCb: (val,idx) => labels[idx],
-    yLabel: 'Sum ASMR / 100k'
+    yLabel: 'Sum ASMR / 100k',
+    xAutoSkip: true, xMaxRotation: 45
   });
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
-function renderChart(labels, datasets, { xTickCb, yLabel }) {
+function renderChart(labels, datasets, { xTickCb, yLabel, xAutoSkip=false, xMaxRotation=0 }) {
   const ctx = document.getElementById('main-chart').getContext('2d');
   if (chart) chart.destroy();
   chart = new Chart(ctx, {
@@ -1275,7 +1277,7 @@ function renderChart(labels, datasets, { xTickCb, yLabel }) {
       },
       scales: {
         x: {
-          ticks: { color:'#6b7280', font:{family:'DM Mono',size:10}, maxRotation:0, autoSkip:false, callback:xTickCb },
+          ticks: { color:'#6b7280', font:{family:'DM Mono',size:10}, maxRotation:xMaxRotation, minRotation:0, autoSkip:xAutoSkip, autoSkipPadding:12, callback:xTickCb },
           grid: { color:'rgba(37,42,58,0.6)', drawTicks:false },
           border: { color:'#252a3a' }
         },
