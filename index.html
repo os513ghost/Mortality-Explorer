@@ -600,16 +600,23 @@ function parseCSV(text) {
             }
 
             // Second pass: write baseline and CI onto every row.
-            // Full prediction interval including leverage penalty — mirrors
-            // annual/seasonal treatment. Worth revisiting if 2025 bands look
-            // too wide in practice; switch to fixedFactor = sqrt(1+1/n) if so.
+            // Fixed-width prediction interval: sqrt(1 + 1/n) only — no leverage.
+            // Justification: the weekly SE profile is estimated cross-sectionally
+            // (each week-of-year independently across training years), not as a
+            // time-series forecast. Extrapolation uncertainty is already embedded
+            // in the per-week residual SE. Applying a leverage penalty would
+            // double-count that uncertainty.
             //
-            // t(n-3) rather than t(n-2): the shape was estimated from the 2015-19
-            // mean before the residuals were computed, consuming one additional df.
-            const tCritWeekly = tCritical95(reg.n - 3);
+            // Bounds use the delta method (log-space back-transform) to guarantee
+            // lo > 0: lo = mean * exp(-r), hi = mean * exp(+r), r = hw/mean.
+            // For typical r values the result is nearly symmetric; the asymmetry
+            // only becomes visible for high-variance weeks in small age groups.
+            //
+            // t(n-3): one df consumed by the 2015-19 shape estimation step.
+            const tCritWeekly  = tCritical95(reg.n - 3);
+            const fixedFactor  = Math.sqrt(1 + 1 / reg.n);
             allYrs.forEach(yr => {
               const predLevel = reg.slope * yr + reg.intercept;
-              const leverage  = Math.sqrt(1 + 1/reg.n + (yr - reg.xMean)**2 / reg.Sxx);
               for (let wk = 1; wk <= 52; wk++) {
                 if (!shape[wk]) continue;
                 const tp  = yr + '-W' + String(wk).padStart(2, '0');
@@ -617,27 +624,33 @@ function parseCSV(text) {
                 if (!row) continue;
                 const mean = predLevel * shape[wk] / shapeSum;
                 const hw   = wkSE_smooth[wk] != null
-                             ? wkSE_smooth[wk] * tCritWeekly * leverage
+                             ? wkSE_smooth[wk] * tCritWeekly * fixedFactor
                              : null;
-                row[bk]       = mean;
-                row[bk+'_lo'] = hw != null ? mean - hw : null;
-                row[bk+'_hi'] = hw != null ? mean + hw : null;
-                // Mean baseline columns
+                row[bk] = mean;
+                if (hw != null && mean > 0) {
+                  const r = hw / mean;
+                  row[bk+'_lo'] = mean * Math.exp(-r);
+                  row[bk+'_hi'] = mean * Math.exp(+r);
+                } else {
+                  row[bk+'_lo'] = row[bk+'_hi'] = null;
+                }
+                // Mean baseline — fixed-width, delta method bounds
                 const wm = wkMean[wk];
                 const sd = wkSD_smooth[wk];
-                if (wm != null && sd != null) {
+                if (wm != null && sd != null && wm > 0) {
                   const mhw = sd * tMean * Math.sqrt(1 + 1/reg.n);
+                  const mr  = mhw / wm;
                   row[bk+'_mean']    = wm;
-                  row[bk+'_mean_lo'] = wm - mhw;
-                  row[bk+'_mean_hi'] = wm + mhw;
+                  row[bk+'_mean_lo'] = wm * Math.exp(-mr);
+                  row[bk+'_mean_hi'] = wm * Math.exp(+mr);
                 } else {
                   row[bk+'_mean'] = row[bk+'_mean_lo'] = row[bk+'_mean_hi'] = null;
                 }
-                // Log-linear baseline columns
+                // Log-linear baseline — already in log space, fixed-width factor
                 if (regLog && wkLogSE_smooth[wk] != null) {
                   const logPredLevel = regLog.slope * yr + regLog.intercept;
                   const logMean = logPredLevel + Math.log(shape[wk] / shapeSum);
-                  const lhw = wkLogSE_smooth[wk] * tCritWeekly * leverage;
+                  const lhw = wkLogSE_smooth[wk] * tCritWeekly * fixedFactor;
                   row[bk+'_loglin']    = Math.exp(logMean);
                   row[bk+'_loglin_lo'] = Math.exp(logMean - lhw);
                   row[bk+'_loglin_hi'] = Math.exp(logMean + lhw);

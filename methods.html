@@ -307,6 +307,33 @@
     noise from the visual appearance of the CI band, without affecting significance
     conclusions. Circular wrapping at W52→W01 prevents a discontinuity at year boundaries.
   </p>
+  <p>
+    The weekly CI uses a <strong>fixed-width</strong> interval — the leverage term
+    <em>(x − x̄)²/Sxx</em> is omitted. The justification is that the per-week SE
+    is estimated cross-sectionally (each week-of-year independently across training
+    years), not as a time-series forecast. Extrapolation uncertainty is already
+    embedded in the residuals; applying a leverage penalty on top would double-count
+    it. The formula simplifies to:
+  </p>
+  <div class="formula">
+    CI(year, week) = baseline ± t(n−3) · SE_week · √(1 + 1/n)
+  </div>
+  <p>
+    Because mortality rates must be non-negative, the bounds are computed via the
+    <strong>delta method</strong> (log-space back-transform) rather than simple
+    subtraction. Expressing the half-width as a fraction of the predicted value
+    <em>r = hw / predicted</em>, the bounds become:
+  </p>
+  <div class="formula">
+    lo = predicted × exp(−r)
+    hi = predicted × exp(+r)
+  </div>
+  <p>
+    This guarantees lo &gt; 0 always and produces a slightly asymmetric interval
+    (the upper band stretches further than the lower band compresses). For typical
+    values of <em>r</em> the result is nearly symmetric; the asymmetry only becomes
+    visible for high-variance weeks in small age groups or short baseline windows.
+  </p>
 
   <div class="callout">
     <strong>Important.</strong> A year or week falling outside the 95% CI indicates
