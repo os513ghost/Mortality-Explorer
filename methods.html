@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Methods — Mortality Explorer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14; --surface: #151820; --surface2: #1c2030; --border: #252a3a;
+    --text: #e8eaf0; --text-dim: #6b7280; --text-mid: #9ca3af;
+    --accent: #e8c97a; --accent2: #7a9ee8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-weight: 300;
+    min-height: 100vh;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(122,158,232,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(122,158,232,0.03) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .container {
+    position: relative; z-index: 1;
+    max-width: 780px; margin: 0 auto; padding: 40px 24px 80px;
+  }
+  header { padding-bottom: 28px; border-bottom: 1px solid var(--border); margin-bottom: 40px; }
+  header a {
+    display: inline-block; margin-bottom: 18px;
+    font-family: 'DM Mono', monospace; font-size: 0.72rem;
+    color: var(--accent2); text-decoration: none; letter-spacing: 0.06em;
+    border-bottom: 1px solid transparent; transition: border-color 0.15s;
+  }
+  header a:hover { border-bottom-color: var(--accent2); }
+  h1 {
+    font-family: 'DM Serif Display', serif; font-weight: 400;
+    font-size: clamp(1.4rem, 4vw, 2.2rem); letter-spacing: -0.02em; line-height: 1.1;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+  .subtitle { margin-top: 8px; color: var(--text-dim); font-size: 0.82rem; line-height: 1.6; }
+
+  h2 {
+    font-family: 'DM Serif Display', serif; font-weight: 400; font-style: italic;
+    font-size: 1.25rem; color: var(--accent); margin: 48px 0 16px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  h3 {
+    font-family: 'DM Sans', sans-serif; font-weight: 500;
+    font-size: 0.85rem; color: var(--text-mid); letter-spacing: 0.08em;
+    text-transform: uppercase; margin: 28px 0 10px;
+  }
+  p { font-size: 0.88rem; line-height: 1.75; color: var(--text-mid); margin-bottom: 14px; }
+  p strong { color: var(--text); font-weight: 500; }
+  a { color: var(--accent2); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.15s; }
+  a:hover { border-bottom-color: var(--accent2); }
+
+  .formula {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent2);
+    border-radius: 4px; padding: 14px 18px; margin: 16px 0 20px;
+    font-family: 'DM Mono', monospace; font-size: 0.78rem;
+    color: var(--text); line-height: 1.8; overflow-x: auto;
+  }
+  .formula .comment { color: var(--text-dim); }
+
+  table {
+    width: 100%; border-collapse: collapse; font-size: 0.82rem;
+    margin: 16px 0 24px;
+  }
+  th {
+    text-align: left; padding: 8px 12px;
+    font-family: 'DM Mono', monospace; font-size: 0.72rem;
+    letter-spacing: 0.06em; color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  td { padding: 8px 12px; color: var(--text-mid); border-bottom: 1px solid var(--surface2); }
+  td strong { color: var(--text); font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+
+  .callout {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 14px 18px; margin: 20px 0;
+    font-size: 0.82rem; line-height: 1.7; color: var(--text-mid);
+  }
+  .callout strong { color: var(--text); font-weight: 500; }
+
+  footer {
+    text-align: center; padding: 24px 0 0;
+    color: var(--text-dim); font-size: 0.7rem;
+    border-top: 1px solid var(--border); margin-top: 60px;
+  }
+
+  /* ── Phone (≤600px) ──────────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    .container { padding: 20px 16px 60px; }
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.1rem; margin: 36px 0 12px; }
+    p  { font-size: 0.84rem; }
+    .formula { font-size: 0.72rem; padding: 10px 12px; }
+    table { font-size: 0.75rem; }
+    th, td { padding: 6px 8px; }
+    .callout { font-size: 0.78rem; padding: 10px 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <a href="index.html">← Back to Explorer</a>
+    <h1>Statistical <em>Methods</em></h1>
+    <p class="subtitle">How baselines, confidence intervals and excess mortality are computed.</p>
+  </header>
+
+  <!-- ── DATA ─────────────────────────────────────────────────────────────── -->
+  <h2>Data</h2>
+  <p>
+    Weekly all-cause mortality counts and population estimates are drawn from
+    <strong>Eurostat</strong> and, for Israel, the
+    <strong>Israel Central Bureau of Statistics</strong>
+    (<a href="https://www.cbs.gov.il/he/cbsnewbrand/Pages/default.aspx" target="_blank" rel="noopener">CBS</a>).
+    Counts are converted to age-standardised mortality rates (ASMR) per 100,000
+    population using the <strong>2013 European Standard Population</strong> (ESP13)
+    with 5-year age bins and weekly interpolated populations.
+  </p>
+  <p>
+    A small number of country-specific adjustments apply: Israel uses the 0–19 age group
+    only; Germany uses 10-year bins below age 40 (20–44 observations); Sweden includes
+    deaths recorded with an unknown week of death (W99). All 2025 data are preliminary
+    and subject to revision.
+  </p>
+
+  <!-- ── VIEWS ─────────────────────────────────────────────────────────────── -->
+  <h2>Three Views</h2>
+  <p>The explorer offers three levels of temporal aggregation, each suited to a different question.</p>
+
+  <h3>Annual view</h3>
+  <p>
+    Weekly ASMR values are summed across the calendar year (W01–W52/W53).
+    Years with 53 ISO weeks are scaled by 52/53 so that all annual sums
+    are comparable on a 52-week basis.
+  </p>
+
+  <h3>Seasonal view</h3>
+  <p>
+    Seasons run from W26 of one year to W25 of the next (mid-summer to mid-summer),
+    keeping winter mortality — which spans the calendar year boundary — within
+    a single observation. 53-week seasons are similarly scaled by 52/53.
+  </p>
+
+  <h3>Weekly view</h3>
+  <p>
+    Individual weekly ASMR values plotted directly, with the baseline and confidence
+    interval described below overlaid. This is the most sensitive view for detecting
+    short, sharp excess events such as the COVID-19 spring 2020 wave.
+  </p>
+
+  <!-- ── BASELINE ──────────────────────────────────────────────────────────── -->
+  <h2>Baseline Construction</h2>
+  <p>
+    The baseline represents the mortality level that would have been expected
+    in the absence of any unusual event, based on the pre-pandemic historical trend.
+    All baselines are intentionally anchored to the pre-pandemic period so that
+    post-2019 years can be evaluated against a stable counterfactual.
+  </p>
+
+  <h3>Annual and seasonal baselines</h3>
+  <p>
+    For each country and age group, annual (or seasonal) ASMR sums are computed for
+    every year in the chosen baseline window. A simple <strong>ordinary least squares
+    linear regression</strong> is then fit:
+  </p>
+  <div class="formula">
+    ASMR_sum ~ β₀ + β₁ × year
+  </div>
+  <p>
+    The fitted line is projected forward to produce the expected level in any given year.
+    The user can select from several pre-defined baseline windows
+    (e.g. 2011–19, 2012–19) to assess sensitivity to the choice of training period.
+    A <strong>Baseline Type</strong> toggle switches between two modes:
+  </p>
+  <p>
+    <strong>Trend</strong> — the OLS regression line projected forward. Accounts for the
+    long-run decline in age-standardised mortality, so post-2019 years are judged against
+    where the trend <em>would have been</em>, not where it <em>was</em> during the baseline period.
+    This is the primary mode and the appropriate framing for evaluating recent years.
+  </p>
+  <p>
+    <strong>Mean</strong> — a flat horizontal line at the average of the baseline-period annual
+    (or seasonal, or weekly) values. Simpler and more transparent; useful as a cross-check
+    and for audiences unfamiliar with trend adjustment. Because it ignores the declining trend,
+    the mean baseline will appear increasingly conservative for years well beyond the training window —
+    post-2020 years will tend to look elevated even in the absence of genuine excess.
+  </p>
+  <p>
+    <strong>Log-linear</strong> — fits the regression on the natural logarithm of ASMR rather than
+    the raw value, equivalent to modelling a constant <em>percentage</em> decline per year rather
+    than a constant absolute decline. This is well-grounded in demographic and actuarial literature,
+    where mortality improvement is typically described as a proportional rate. The projected baseline
+    curves gently (it is convex rather than straight) and cannot cross zero, which is physically
+    correct. Confidence intervals are computed in log space and back-transformed via exponentiation,
+    giving a slightly asymmetric band that is wider above the baseline than below — again, physically
+    appropriate. In practice, for typical European mortality data the difference from the linear
+    trend is modest (a few units of ASMR at 2025), but the log-linear projection is marginally
+    higher at distance from the training window, making it the more conservative of the two
+    trend-based approaches.
+  </p>
+
+  <h3>Weekly baselines — EuroMOMO-style method</h3>
+  <p>
+    A per-week OLS regression on raw weekly ASMR is noisy because it treats each
+    week in isolation and ignores the strong seasonal structure of mortality.
+    Instead, the weekly baseline follows the approach used by
+    <a href="https://www.euromomo.eu" target="_blank" rel="noopener">EuroMOMO</a>,
+    decomposing the problem into a <em>seasonal shape</em> and an <em>annual trend level</em>:
+  </p>
+
+  <h3>Step 1 — Seasonal shape</h3>
+  <p>
+    For each week-of-year (W01–W52), the <strong>mean ASMR across 2015–2019</strong>
+    is computed. These five years form a stable, pre-pandemic reference period.
+    Together the 52 weekly means constitute the seasonal shape — a profile of how
+    mortality typically distributes across the year.
+  </p>
+
+  <h3>Step 2 — Annual level from shoulder weeks</h3>
+  <p>
+    For each calendar year, the total annual mortality level is estimated from
+    <strong>shoulder weeks 15–26 and 35–46</strong> only. These mid-spring and
+    early-autumn periods are epidemiologically stable: the winter flu peak has
+    cleared, the summer trough has not yet begun. Using only shoulder weeks
+    insulates the annual level estimate from years with unusually severe flu
+    seasons or summer heat events.
+  </p>
+  <div class="formula">
+    annual_level(year) = Σ ASMR(shoulder weeks) × shape_total / shape_shoulder
+  </div>
+
+  <h3>Step 3 — Trend regression on annual levels</h3>
+  <p>
+    OLS is fit on the shoulder-derived annual levels across the baseline window,
+    giving a smooth trend line that captures the long-run decline in age-standardised
+    mortality.
+  </p>
+
+  <h3>Step 4 — Weekly prediction</h3>
+  <p>
+    The predicted weekly baseline for any year and week is the projected annual
+    level scaled by the week's share of the seasonal shape:
+  </p>
+  <div class="formula">
+    baseline(year, week) = reg.predict(year) × shape[week] / shape_sum
+  </div>
+  <p>
+    This means the <em>shape</em> of the expected seasonal curve is always drawn
+    from the stable 2015–19 reference period, while its <em>level</em> follows
+    the long-run trend projection.
+  </p>
+
+  <!-- ── CI ────────────────────────────────────────────────────────────────── -->
+  <h2>Confidence Intervals</h2>
+
+  <h3>Annual and seasonal CI</h3>
+  <p>
+    The 95% confidence interval is a standard <strong>regression prediction interval</strong>:
+  </p>
+  <div class="formula">
+    CI = baseline ± t(n−2) · SE · √(1 + 1/n + (year − year̄)² / Sxx)
+    <br>
+    <span class="comment">SE = residual standard error of the baseline regression
+    n = number of training years
+    Sxx = sum of squared deviations of training years from their mean</span>
+  </div>
+  <p>
+    The <strong>leverage term</strong> (year − year̄)²/Sxx grows as a year moves
+    further from the centre of the training window. This correctly reflects that
+    extrapolating a regression line further into the future carries genuinely
+    greater uncertainty — the confidence band widens with each post-baseline year.
+    With 8–9 training years, t(n−2) ≈ 2.365, somewhat wider than the
+    large-sample 1.96, appropriately penalising the small sample.
+  </p>
+
+  <h3>Weekly CI</h3>
+  <p>
+    The weekly CI uses the same prediction interval formula and leverage structure.
+    Rather than a single regression SE, however, each week-of-year carries its own
+    <strong>per-week residual SE</strong>, computed from the residuals
+    (observed ASMR − predicted baseline) for that week across all training years.
+    This naturally produces wide bands for volatile winter weeks and narrow bands
+    for stable shoulder weeks — reflecting the true epidemiological uncertainty
+    of each part of the year.
+  </p>
+  <div class="formula">
+    CI(year, week) = baseline ± t(n−3) · SE_week · √(1 + 1/n + (year − year̄)² / Sxx)
+    <br>
+    <span class="comment">SE_week = per-week residual SE from EuroMOMO model fit
+    t(n−3) rather than t(n−2): one additional df consumed by
+    estimating the 2015–19 seasonal shape before computing residuals</span>
+  </div>
+  <p>
+    The per-week SE values are smoothed with a short circular moving average
+    (5-week window for age 15–44, 3-week for all others) to remove estimation
+    noise from the visual appearance of the CI band, without affecting significance
+    conclusions. Circular wrapping at W52→W01 prevents a discontinuity at year boundaries.
+  </p>
+
+  <div class="callout">
+    <strong>Important.</strong> A year or week falling outside the 95% CI indicates
+    that the observed mortality is statistically unusual relative to the historical
+    trend — not that a specific cause has been identified. These intervals are
+    intended for exploratory visualisation and should not be treated as formal
+    epidemiological excess mortality estimates.
+  </div>
+
+  <!-- ── BASELINE WINDOWS ───────────────────────────────────────────────────── -->
+  <h2>Baseline Windows</h2>
+  <p>
+    Six baseline windows are provided. Each trains the regression on a different
+    set of years, allowing the user to assess how sensitive conclusions are to the
+    choice of training period.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Label</th><th>Training years (annual)</th><th>Training seasons</th><th>n</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>2009–19</strong></td><td>2009–2019</td><td>2009/10–2018/19</td><td>11 / 10</td></tr>
+      <tr><td><strong>2010–19</strong></td><td>2010–2019</td><td>2010/11–2018/19</td><td>10 / 9</td></tr>
+      <tr><td><strong>2011–19</strong></td><td>2011–2019</td><td>2011/12–2018/19</td><td>9 / 8</td></tr>
+      <tr><td><strong>2012–19</strong></td><td>2012–2019</td><td>2012/13–2018/19</td><td>8 / 7</td></tr>
+      <tr><td><strong>2013–19</strong></td><td>2013–2019</td><td>2013/14–2018/19</td><td>7 / 6</td></tr>
+      <tr><td><strong>2015–19</strong></td><td>2015–2019</td><td>2015/16–2018/19</td><td>5 / 4†</td></tr>
+    </tbody>
+  </table>
+  <p>
+    † The 2015–19 baseline produces only 4 seasonal training points (df = 2, t ≈ 4.3),
+    so seasonal confidence intervals for this window are very wide.
+    Baselines with fewer than 5 training years are suppressed in the weekly view.
+  </p>
+
+  <!-- ── SOURCES ──────────────────────────────────────────────────────────── -->
+  <h2>Sources</h2>
+  <p>Eurostat — Deaths by week, sex and 5-year age group:<br>
+    <a href="https://ec.europa.eu/eurostat/databrowser/product/view/demo_r_mwk_05?lang=en" target="_blank" rel="noopener">demo_r_mwk_05</a>
+  </p>
+  <p>Eurostat — Deaths by week, sex and 10-year age group:<br>
+    <a href="https://ec.europa.eu/eurostat/databrowser/view/demo_r_mwk_10/default/table?lang=en" target="_blank" rel="noopener">demo_r_mwk_10</a>
+  </p>
+  <p>Eurostat — Population on 1 January by age and sex:<br>
+    <a href="https://ec.europa.eu/eurostat/databrowser/view/demo_pjan/default/table?lang=en" target="_blank" rel="noopener">demo_pjan</a>
+  </p>
+  <p>Eurostat — Methodology and quality report for weekly death statistics:<br>
+    <a href="https://ec.europa.eu/eurostat/cache/metadata/en/demomwk_esms.htm" target="_blank" rel="noopener">demomwk_esms</a>
+  </p>
+  <p>Israel Central Bureau of Statistics:<br>
+    <a href="https://www.cbs.gov.il/he/cbsnewbrand/Pages/default.aspx" target="_blank" rel="noopener">cbs.gov.il</a>
+  </p>
+
+  <footer>Mortality Explorer — methods</footer>
+
+</div>
+</body>
+</html>

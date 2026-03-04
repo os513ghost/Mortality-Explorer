@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mortality Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14; --surface: #151820; --surface2: #1c2030; --border: #252a3a;
+    --text: #e8eaf0; --text-dim: #6b7280; --text-mid: #9ca3af;
+    --accent: #e8c97a; --accent2: #7a9ee8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-weight: 300;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(122,158,232,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(122,158,232,0.03) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .container {
+    position: relative; z-index: 1; max-width: 1600px; width: 100%;
+    margin: 0 auto; padding: 0 16px; display: flex; flex-direction: column; flex: 1;
+  }
+  header { padding: 20px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-shrink: 0; }
+  .header-inner { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .title-block h1 { font-family: 'DM Serif Display', serif; font-size: clamp(1.2rem,3vw,2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; }
+  .title-block h1 em { font-style: italic; color: var(--accent); }
+  .title-block p { margin-top: 4px; color: var(--text-dim); font-size: 0.78rem; line-height: 1.6; }
+  .title-block p a {
+    color: var(--accent2); text-decoration: none; border-bottom: 1px solid transparent;
+    transition: border-color 0.15s;
+  }
+  .title-block p a:hover { border-bottom-color: var(--accent2); }
+  .title-block p .sep { color: var(--border); margin: 0 6px; }
+
+  #loading { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 14px; }
+  .spinner { width: 36px; height: 36px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .load-text { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text-dim); letter-spacing: 0.1em; }
+
+  #upload-prompt { display: none; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; }
+  .upload-box { border: 2px dashed var(--border); border-radius: 12px; padding: 36px 48px; cursor: pointer; transition: all 0.2s; max-width: 440px; width: 100%; text-align: center; }
+  .upload-box:hover { border-color: var(--accent); background: rgba(232,201,122,0.04); }
+  .upload-box h3 { font-family: 'DM Serif Display', serif; font-size: 1.1rem; font-weight: 400; margin: 10px 0 6px; }
+  .upload-box p { font-size: 0.75rem; color: var(--text-dim); }
+  #file-input { display: none; }
+
+  #app { display: none; flex-direction: column; flex: 1; }
+
+  .controls {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 14px;
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; flex-shrink: 0;
+  }
+  .control-group { display: flex; flex-direction: column; gap: 5px; }
+  .control-group.countries { flex: 1; min-width: 0; }
+  label { font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
+
+  select {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-size: 0.82rem; border-radius: 6px;
+    padding: 6px 28px 6px 9px; outline: none; transition: border-color 0.2s; cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+  }
+  select:hover { border-color: var(--accent); }
+
+  .country-multi { display: flex; flex-wrap: wrap; gap: 4px; }
+  .country-chip {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem; padding: 3px 8px;
+    border-radius: 20px; border: 1px solid var(--border); cursor: pointer;
+    transition: all 0.15s; color: var(--text-mid); background: var(--surface2);
+    white-space: nowrap; user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+
+  .tab-group { display: flex; gap: 3px; flex-wrap: wrap; }
+  .tab-btn {
+    font-family: 'DM Mono', monospace; font-size: 0.63rem; padding: 4px 8px;
+    border-radius: 5px; border: 1px solid var(--border); cursor: pointer;
+    transition: all 0.15s; color: var(--text-dim); background: var(--surface2); touch-action: manipulation;
+  }
+  .tab-btn.active { border-color: var(--accent2); color: var(--accent2); background: rgba(122,158,232,0.1); }
+  .tab-btn.active-gold { border-color: var(--accent); color: var(--accent); background: rgba(232,201,122,0.1); }
+  .toggle-btn {
+    font-family: 'DM Mono', monospace; font-size: 0.63rem; padding: 4px 9px;
+    border-radius: 5px; border: 1px solid var(--border); cursor: pointer;
+    transition: all 0.15s; color: var(--text-dim); background: var(--surface2); touch-action: manipulation;
+  }
+  .toggle-btn.on { border-color: var(--accent2); color: var(--accent2); background: rgba(122,158,232,0.1); }
+
+  .year-slider-group { display: flex; flex-direction: column; gap: 5px; min-width: 140px; max-width: 200px; }
+  .year-slider-row { display: flex; align-items: center; gap: 8px; }
+  .year-val { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--accent); min-width: 30px; }
+  input[type="range"] {
+    flex: 1; height: 3px; padding: 0; border: none; border-radius: 2px;
+    background: var(--border); accent-color: var(--accent); cursor: pointer; min-width: 80px;
+  }
+
+  .chart-wrap {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 16px 12px; flex: 1; display: flex; flex-direction: column;
+    min-height: 500px; margin-bottom: 6px;
+  }
+  .chart-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+  .chart-title { font-family: 'DM Serif Display', serif; font-size: 1rem; font-weight: 400; }
+  .chart-subtitle { font-size: 0.72rem; color: var(--text-dim); margin-top: 2px; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.7rem; color: var(--text-mid); }
+  .legend-line { width: 16px; height: 2px; border-radius: 1px; }
+  .legend-dash { width: 16px; height: 2px; background: repeating-linear-gradient(90deg, var(--accent2) 0 4px, transparent 4px 7px); }
+  .legend-band { width: 16px; height: 8px; border-radius: 2px; opacity: 0.4; }
+  .chart-canvas-wrap { flex: 1; position: relative; min-height: 400px; }
+  .chart-canvas-wrap canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+
+  .disclaimer {
+    font-size: 0.62rem; color: var(--text-dim); line-height: 1.5;
+    padding: 6px 2px 14px; flex-shrink: 0;
+  }
+
+  footer { text-align: center; padding: 14px; color: var(--text-dim); font-size: 0.7rem; border-top: 1px solid var(--border); flex-shrink: 0; position: relative; z-index: 1; }
+
+  /* ── Tablet (≤900px) ─────────────────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .chart-wrap { min-height: 420px; }
+    .chart-canvas-wrap { min-height: 340px; }
+  }
+
+  /* ── Phone (≤600px) ──────────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    /* Container */
+    .container { padding: 0 10px; }
+
+    /* Header */
+    header { padding: 12px 0 10px; margin-bottom: 10px; }
+    .title-block h1 { font-size: 1.25rem; }
+    .title-block p { font-size: 0.68rem; line-height: 1.5; }
+
+    /* Controls panel: stack everything full-width */
+    .controls {
+      padding: 10px 10px; gap: 10px;
+      flex-direction: column; align-items: stretch;
+    }
+    .control-group { width: 100%; }
+    .control-group.countries { width: 100%; flex: none; }
+
+    /* Country chips: slightly larger touch targets */
+    .country-chip { font-size: 0.68rem; padding: 5px 10px; }
+
+    /* Tab buttons: wrap and fill width naturally */
+    .tab-group { gap: 4px; }
+    .tab-btn, .toggle-btn {
+      font-size: 0.66rem; padding: 6px 10px;
+      flex: 1; text-align: center; min-width: 0;
+    }
+
+    /* Select: full width */
+    select { width: 100%; font-size: 0.85rem; padding: 8px 28px 8px 10px; }
+
+    /* Year slider: full width */
+    .year-slider-group { max-width: 100%; min-width: 0; width: 100%; }
+    input[type="range"] { min-width: 0; }
+
+    /* Chart */
+    .chart-wrap { min-height: 340px; padding: 12px 8px 8px; margin-bottom: 4px; }
+    .chart-canvas-wrap { min-height: 280px; }
+    .chart-header { gap: 6px; }
+    .chart-title { font-size: 0.9rem; }
+    .chart-subtitle { font-size: 0.65rem; }
+    .legend { gap: 6px; }
+    .legend-item { font-size: 0.65rem; }
+
+    /* Disclaimer + footer */
+    .disclaimer { font-size: 0.6rem; }
+    footer { font-size: 0.65rem; padding: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="header-inner">
+      <div class="title-block">
+        <h1><em>Mortality</em> Explorer</h1>
+        <p>
+          Age-standardised mortality rates · Weekly data · 31 countries · 2009–2025
+          <span class="sep">·</span>
+          By <a href="https://x.com/OS51388957" target="_blank" rel="noopener">@OS51388957</a>
+          <span class="sep">·</span>
+          <a href="https://public.tableau.com/app/profile/os8749/viz/Europe-CausesofdeathASMRsbyage2013-2021/Causes_of_Death" target="_blank" rel="noopener">Causes of Death Tool</a>
+          <span class="sep">·</span>
+          <a href="https://public.tableau.com/app/profile/os8749/viz/Age-StandardisedExcessforanyrangeofdatesVS2012-19trends/Dashboard1" target="_blank" rel="noopener">Sub-National ASMR and excess map tool</a>
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <div id="loading"><div class="spinner"></div><div class="load-text">Loading…</div></div>
+
+  <div id="upload-prompt">
+    <div class="upload-box" onclick="document.getElementById('file-input').click()">
+      <div style="font-size:2rem">📂</div>
+      <h3>Load mortality data</h3>
+      <p>Select <strong>Live_ASMR.csv</strong> or any compatible mortality CSV</p>
+    </div>
+    <input type="file" id="file-input" accept=".csv" onchange="handleFileUpload(event)">
+    <p style="font-size:0.72rem;color:var(--text-dim);margin-top:8px;text-align:center;">Place CSV next to <code>index.html</code> for auto-load on GitHub Pages</p>
+  </div>
+
+  <div id="app">
+    <div class="controls">
+      <div class="control-group countries">
+        <label>Countries</label>
+        <div class="country-multi" id="country-chips"></div>
+      </div>
+      <div class="control-group">
+        <label>Age Group</label>
+        <select id="age-select">
+          <option value="all ages">All Ages</option>
+          <option value="15-44">15–44</option>
+          <option value="45-64">45–64</option>
+          <option value="65+">65+</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>View</label>
+        <div class="tab-group">
+          <div class="tab-btn active-gold" id="view-weekly"   onclick="setView('weekly')">Weekly</div>
+          <div class="tab-btn"             id="view-annual"   onclick="setView('annual')">Annual</div>
+          <div class="tab-btn"             id="view-seasonal" onclick="setView('seasonal')">Seasonal</div>
+        </div>
+      </div>
+      <div class="control-group">
+        <label>Baseline Type</label>
+        <div class="tab-group">
+          <div class="tab-btn active" id="bltype-trend"   onclick="setBlType('trend')">Trend</div>
+          <div class="tab-btn"        id="bltype-loglin" onclick="setBlType('loglin')">Log-linear</div>
+          <div class="tab-btn"        id="bltype-mean"   onclick="setBlType('mean')">Mean</div>
+        </div>
+      </div>
+      <div class="control-group">
+        <label>Baseline Window</label>
+        <div class="tab-group" id="baseline-tabs"></div>
+      </div>
+      <div class="control-group">
+        <label>Display</label>
+        <div class="tab-group">
+          <div class="toggle-btn on" id="toggle-ci"       onclick="toggleOpt('ci')">CI Band</div>
+          <div class="toggle-btn on" id="toggle-baseline" onclick="toggleOpt('baseline')">Baseline</div>
+        </div>
+      </div>
+      <div class="control-group year-slider-group">
+        <label id="start-label">Start Year</label>
+        <div class="year-slider-row">
+          <span class="year-val" id="yr-s-lbl">2009</span>
+          <input type="range" id="yr-start" min="2009" max="2024" value="2009" step="1" oninput="onYearRange()">
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-wrap">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title" id="chart-title">Mortality Rate Over Time</div>
+          <div class="chart-subtitle" id="chart-sub">Age-standardised mortality rate per 100,000 · Weekly</div>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-line" style="background:#e8c97a"></div><span>Observed</span></div>
+          <div class="legend-item"><div class="legend-dash"></div><span>Baseline</span></div>
+          <div class="legend-item"><div class="legend-band" style="background:#7a9ee8"></div><span>95% CI</span></div>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap"><canvas id="main-chart"></canvas></div>
+    </div>
+
+    <p class="disclaimer">
+      All 2025 data are preliminary or incomplete. W99 = unknown week of death, included for Sweden.
+      ESP13, 5-year age bins (90+), weekly interpolated populations.
+      Israel: 0–19 age group. Germany: 10-year bins &lt;40 (20–44 observations used).
+    </p>
+  </div>
+</div>
+<footer>
+  Mortality Explorer
+  <span style="margin:0 10px;color:var(--border)">·</span>
+  <a href="methods.html" style="color:var(--accent2);text-decoration:none;border-bottom:1px solid transparent;transition:border-color 0.15s" onmouseover="this.style.borderBottomColor='var(--accent2)'" onmouseout="this.style.borderBottomColor='transparent'">Methods</a>
+
+</footer>
+
+<script>
+// Populated dynamically from CSV
+let COUNTRIES = [];
+const COLORS = ['#e8c97a','#7a9ee8','#e87a7a','#7ae8b0','#c77ae8','#e8a07a','#7ae8e8','#e8e87a','#a8e87a','#e87ac0','#7ac0e8','#e8c77a','#9ae87a','#e87aaa','#7ab0e8','#e8d07a','#7ae8c0','#e89a7a','#87e87a','#e87ab0','#7aaae8','#e8e07a','#70e87a','#e87ab8','#7aa8e8','#e8c47a','#7ae890','#e8a87a','#7ae8a8','#e87aa0','#7ac8e8'];
+const cc = c => COLORS[COUNTRIES.indexOf(c) % COLORS.length];
+
+// Populated dynamically after CSV load: keys are "Country|age"
+const incomplete2025Keys = new Set();
+
+// Populated dynamically from CSV: first year with data per country
+let DATA_START = {};
+
+const BASELINES_YEAR = [
+  { key:'baseline_2009_19', label:'2009–19', blStart:2009, blEnd:2019 },
+  { key:'baseline_2010_19', label:'2010–19', blStart:2010, blEnd:2019 },
+  { key:'baseline_2011_19', label:'2011–19', blStart:2011, blEnd:2019 },
+  { key:'baseline_2012_19', label:'2012–19', blStart:2012, blEnd:2019 },
+  { key:'baseline_2013_19', label:'2013–19', blStart:2013, blEnd:2019 },
+  { key:'baseline_2014_19', label:'2014–19', blStart:2014, blEnd:2019 },
+  { key:'baseline_2015_19', label:'2015–19', blStart:2015, blEnd:2019 },
+];
+const BASELINES_SEASONAL = [
+  { key:'baseline_2009_19', label:'09/10–18/19', blStart:2009, blEnd:2018 },
+  { key:'baseline_2010_19', label:'10/11–18/19', blStart:2010, blEnd:2018 },
+  { key:'baseline_2011_19', label:'11/12–18/19', blStart:2011, blEnd:2018 },
+  { key:'baseline_2012_19', label:'12/13–18/19', blStart:2012, blEnd:2018 },
+  { key:'baseline_2013_19', label:'13/14–18/19', blStart:2013, blEnd:2018 },
+  { key:'baseline_2014_19', label:'14/15–18/19', blStart:2014, blEnd:2018 },
+  { key:'baseline_2015_19', label:'15/16–18/19', blStart:2015, blEnd:2018 },
+];
+
+// ── Default state ─────────────────────────────────────────────────────────────
+let allData = [];
+let selCountries = new Set(['Sweden', 'Hungary']);
+let selAge       = 'all ages';
+let selBaseline  = 'baseline_2011_19';
+let selBlType    = 'trend';   // 'trend' | 'mean'
+let showCI       = true;
+let showBaseline = true;
+let yrStart      = 2009;
+let viewMode     = 'weekly';
+let YR_END       = 2025; // updated dynamically after CSV load
+let chart = null;
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+
+async function tryAutoLoad() {
+  const candidates = ['Live_ASMR.csv', 'Claude_ASMR_baselines_4.csv'];
+  for (const filename of candidates) {
+    try {
+      const r = await fetch(filename);
+      if (!r.ok) continue;
+      parseCSV(await r.text());
+      return;
+    } catch {}
+  }
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('upload-prompt').style.display = 'flex';
+}
+
+function handleFileUpload(e) {
+  const f = e.target.files[0]; if (!f) return;
+  document.getElementById('upload-prompt').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  const reader = new FileReader();
+  reader.onload = ev => parseCSV(ev.target.result);
+  reader.readAsText(f);
+}
+
+function parseCSV(text) {
+  Papa.parse(text, {
+    header: true, skipEmptyLines: true, dynamicTyping: false,
+    complete: res => {
+      // ── 1. Parse raw rows, numeric-cast ASMR ─────────────────────────────
+      const rawData = res.data.map(r => {
+        const out = { ...r };
+        out.ASMR_per_100k = parseFloat(r.ASMR_per_100k);
+        return out;
+      });
+
+      // ── 2. Detect whether pre-computed baseline columns are present ───────
+      const hasPrecomputed = res.meta.fields.includes('baseline_2009_19');
+
+      if (hasPrecomputed) {
+        // Old format: cast all baseline columns and use as-is
+        const blCols = [
+          'baseline_2009_19','baseline_2009_19_lo','baseline_2009_19_hi',
+          'baseline_2010_19','baseline_2010_19_lo','baseline_2010_19_hi',
+          'baseline_2011_19','baseline_2011_19_lo','baseline_2011_19_hi',
+          'baseline_2012_19','baseline_2012_19_lo','baseline_2012_19_hi',
+          'baseline_2013_19','baseline_2013_19_lo','baseline_2013_19_hi',
+          'baseline_2014_19','baseline_2014_19_lo','baseline_2014_19_hi',
+          'baseline_2015_19','baseline_2015_19_lo','baseline_2015_19_hi',
+        ];
+        rawData.forEach(r => blCols.forEach(k => { r[k] = parseFloat(r[k]); }));
+        allData = rawData;
+      } else {
+        // ── 3. New lean format: compute weekly baselines from ASMR alone ────
+        // ── EuroMOMO-style weekly baseline ────────────────────────────────────
+        // Method (mirrors the approach used to produce the pre-computed CSV):
+        //
+        // 1. SHAPE: for each (country, age, week-of-year), compute the mean ASMR
+        //    over the shape reference years 2015–2019. This captures the seasonal
+        //    pattern independently of trend.
+        //
+        // 2. ANNUAL LEVEL: for each year, estimate total annual ASMR from the
+        //    "shoulder" weeks 15–26 and 35–46 only (stable mid-season periods,
+        //    avoiding the volatile winter peak and summer trough). Scale by
+        //    shape_total / shape_shoulder to get a full-year estimate.
+        //
+        // 3. TREND: fit OLS on annual_level ~ year over the baseline window.
+        //
+        // 4. WEEKLY PREDICTION: baseline_wk(yr) = reg.predict(yr) × shape[wk] / shape_sum
+        //
+        // 5. CI: residuals = obs_wk - baseline_wk for each training year.
+        //    SE_wk = sqrt(Σresid² / (n−2)). Bands = baseline ± t(n−2) × SE_wk × √(1+1/n).
+        //    This gives week-varying CI widths (wide in high-variance winter weeks,
+        //    narrow in stable summer weeks), matching real epidemiological uncertainty.
+
+        const SHAPE_YEARS  = new Set([2015, 2016, 2017, 2018, 2019]);
+        const SHOULDER_WKS = new Set([15,16,17,18,19,20,21,22,23,24,25,26,
+                                       35,36,37,38,39,40,41,42,43,44,45,46]);
+
+        // Index all data by (country|age) → year → week → asmr
+        const bySlice = {};   // bySlice[key][yr][wk] = asmr
+        rawData.forEach(r => {
+          if (!r.TIME_PERIOD || !isFinite(r.ASMR_per_100k)) return;
+          const parts = r.TIME_PERIOD.split('-W');
+          if (parts.length < 2) return;
+          const yr = parseInt(parts[0], 10);
+          const wk = parseInt(parts[1], 10);
+          const key = r.Country + '|' + r.age;
+          if (!bySlice[key]) bySlice[key] = {};
+          if (!bySlice[key][yr]) bySlice[key][yr] = {};
+          bySlice[key][yr][wk] = r.ASMR_per_100k;
+        });
+
+        const rowLookup = {};
+        rawData.forEach(r => {
+          rowLookup[r.Country + '|' + r.age + '|' + r.TIME_PERIOD] = r;
+        });
+
+        BASELINES_YEAR.forEach(def => {
+          const bk = def.key;
+
+          Object.keys(bySlice).forEach(sliceKey => {
+            const yearMap = bySlice[sliceKey];
+            const allYrs  = Object.keys(yearMap).map(Number);
+
+            // ── Step 1: shape from 2015–2019 ──────────────────────────────
+            const shape = {};      // shape[wk] = mean ASMR across shape years
+            for (let wk = 1; wk <= 52; wk++) {
+              const vals = [];
+              SHAPE_YEARS.forEach(sy => {
+                if (yearMap[sy] && isFinite(yearMap[sy][wk])) vals.push(yearMap[sy][wk]);
+              });
+              if (vals.length) shape[wk] = vals.reduce((s,v)=>s+v,0) / vals.length;
+            }
+            const shapeSum      = Object.values(shape).reduce((s,v)=>s+v, 0);
+            const shapeShoulder = Object.keys(shape).reduce((s, wk) =>
+              SHOULDER_WKS.has(+wk) ? s + shape[wk] : s, 0);
+            if (shapeSum === 0 || shapeShoulder === 0) return;
+
+            // ── Step 2: annual level per year from shoulder weeks ──────────
+            const annualLevel = {};
+            allYrs.forEach(yr => {
+              let shoulderSum = 0, nShoulder = 0;
+              SHOULDER_WKS.forEach(wk => {
+                if (isFinite(yearMap[yr]?.[wk])) { shoulderSum += yearMap[yr][wk]; nShoulder++; }
+              });
+              if (nShoulder > 0) annualLevel[yr] = shoulderSum / shapeShoulder * shapeSum;
+            });
+
+            // ── Step 3: OLS on annual_level ~ year over baseline window ───
+            const trainX = [], trainY = [];
+            for (let yr = def.blStart; yr <= def.blEnd; yr++) {
+              if (annualLevel[yr] != null) { trainX.push(yr); trainY.push(annualLevel[yr]); }
+            }
+            const reg = linearRegression(trainX, trainY);
+            // Require at least 5 training years — fewer gives t-critical >= 4.3
+            // (df <= 2), producing uninformatively wide bands and unreliable slopes.
+            if (!reg || reg.n < 5) return;
+
+            // ── Step 4 + 5: predict weekly baseline and compute per-week SE ─
+            // First pass: compute per-week residual SE over the training window
+            const wkSE = {};
+            for (let wk = 1; wk <= 52; wk++) {
+              if (!shape[wk]) continue;
+              const resids = [];
+              for (let yr = def.blStart; yr <= def.blEnd; yr++) {
+                const obs = yearMap[yr]?.[wk];
+                if (!isFinite(obs)) continue;
+                const predLevel = reg.slope * yr + reg.intercept;
+                const predWk    = predLevel * shape[wk] / shapeSum;
+                resids.push(obs - predWk);
+              }
+              if (resids.length >= 2) {
+                const sse = resids.reduce((s,r)=>s+r*r, 0);
+                wkSE[wk] = Math.sqrt(sse / Math.max(resids.length - 2, 1));
+              }
+            }
+
+            // Smooth the SE profile with a circular moving average to remove
+            // week-to-week noise from the CI band appearance.
+            // 15-44 uses a 5-week window: values are small in absolute terms so
+            // any single-week spike looks visually large even when proportionally
+            // similar to other age groups.
+            // All other age groups use a 3-week window: enough to soften chatter
+            // without flattening the genuine seasonal variance structure.
+            // Circular wrap (W52->W01) prevents a discontinuity at year boundaries.
+            const ageFromKey = sliceKey.split('|')[1];
+            const smoothWin  = (ageFromKey === '15-44') ? 5 : 3;
+            const smoothHalf = Math.floor(smoothWin / 2);
+            const wkSE_smooth = {};
+            for (let wk = 1; wk <= 52; wk++) {
+              const vals = [];
+              for (let i = -smoothHalf; i <= smoothHalf; i++) {
+                const w = ((wk - 1 + i + 52) % 52) + 1;
+                if (wkSE[w] != null) vals.push(wkSE[w]);
+              }
+              if (vals.length) wkSE_smooth[wk] = vals.reduce((s,v) => s + v, 0) / vals.length;
+            }
+
+            // ── Mean baseline (per-week, same window) ─────────────────────
+            // For each week, the mean and SD of observed ASMR across training
+            // years gives a flat average baseline.
+            // CI = mean ± t(n-1) · SD · sqrt(1 + 1/n)
+            // t(n-1): one fewer df than trend because no slope is estimated;
+            //         but we lose one df for the mean itself → still n-1.
+            // Same leverage-free fixed-width as a simple prediction interval
+            // around a sample mean. No leverage penalty: the mean makes no
+            // extrapolation claim so there is no growing uncertainty.
+            // Same circular SE smoothing applied to SD profile.
+            const wkMean = {}, wkSD = {};
+            for (let wk = 1; wk <= 52; wk++) {
+              if (!shape[wk]) continue;
+              const vals = [];
+              for (let yr = def.blStart; yr <= def.blEnd; yr++) {
+                const obs = yearMap[yr]?.[wk];
+                if (isFinite(obs)) vals.push(obs);
+              }
+              if (vals.length >= 2) {
+                const m = vals.reduce((s,v)=>s+v,0) / vals.length;
+                const sd = Math.sqrt(vals.reduce((s,v)=>s+(v-m)**2,0) / Math.max(vals.length-1,1));
+                wkMean[wk] = m;
+                wkSD[wk]   = sd;
+              }
+            }
+            // Smooth SD profile (same windows as SE)
+            const wkSD_smooth = {};
+            for (let wk = 1; wk <= 52; wk++) {
+              const vals = [];
+              for (let i = -smoothHalf; i <= smoothHalf; i++) {
+                const w = ((wk - 1 + i + 52) % 52) + 1;
+                if (wkSD[w] != null) vals.push(wkSD[w]);
+              }
+              if (vals.length) wkSD_smooth[wk] = vals.reduce((s,v)=>s+v,0) / vals.length;
+            }
+            const tMean = tCritical95(reg.n - 1);  // t(n-1): mean baseline df
+
+            // ── Log-linear weekly baseline ─────────────────────────────────
+            // Regress log(annualLevel) ~ year. Per-week prediction:
+            //   exp(logReg.predict(year)) * shape[wk] / shape_sum
+            // Per-week log residuals: log(obs) - log(baseline_wk).
+            // CI in log space, back-transformed via exp (asymmetric but correct).
+            // t(n-3) applied here too for the same shape-estimation df reason.
+            const logTrainY = trainY.map(v => Math.log(v));
+            const regLog = linearRegression(trainX, logTrainY);
+
+            const wkLogSE = {};
+            if (regLog) {
+              for (let wk = 1; wk <= 52; wk++) {
+                if (!shape[wk]) continue;
+                const logResids = [];
+                for (let yr = def.blStart; yr <= def.blEnd; yr++) {
+                  const obs = yearMap[yr]?.[wk];
+                  if (!isFinite(obs) || obs <= 0) continue;
+                  const logPredLevel = regLog.slope * yr + regLog.intercept;
+                  const logPredWk    = logPredLevel + Math.log(shape[wk] / shapeSum);
+                  logResids.push(Math.log(obs) - logPredWk);
+                }
+                if (logResids.length >= 2) {
+                  const sse = logResids.reduce((s,r)=>s+r*r, 0);
+                  wkLogSE[wk] = Math.sqrt(sse / Math.max(logResids.length - 2, 1));
+                }
+              }
+            }
+            // Smooth log SE profile (same circular windows)
+            const wkLogSE_smooth = {};
+            for (let wk = 1; wk <= 52; wk++) {
+              const vals = [];
+              for (let i = -smoothHalf; i <= smoothHalf; i++) {
+                const w = ((wk - 1 + i + 52) % 52) + 1;
+                if (wkLogSE[w] != null) vals.push(wkLogSE[w]);
+              }
+              if (vals.length) wkLogSE_smooth[wk] = vals.reduce((s,v)=>s+v,0) / vals.length;
+            }
+
+            // Second pass: write baseline and CI onto every row.
+            // Full prediction interval including leverage penalty — mirrors
+            // annual/seasonal treatment. Worth revisiting if 2025 bands look
+            // too wide in practice; switch to fixedFactor = sqrt(1+1/n) if so.
+            //
+            // t(n-3) rather than t(n-2): the shape was estimated from the 2015-19
+            // mean before the residuals were computed, consuming one additional df.
+            const tCritWeekly = tCritical95(reg.n - 3);
+            allYrs.forEach(yr => {
+              const predLevel = reg.slope * yr + reg.intercept;
+              const leverage  = Math.sqrt(1 + 1/reg.n + (yr - reg.xMean)**2 / reg.Sxx);
+              for (let wk = 1; wk <= 52; wk++) {
+                if (!shape[wk]) continue;
+                const tp  = yr + '-W' + String(wk).padStart(2, '0');
+                const row = rowLookup[sliceKey + '|' + tp];
+                if (!row) continue;
+                const mean = predLevel * shape[wk] / shapeSum;
+                const hw   = wkSE_smooth[wk] != null
+                             ? wkSE_smooth[wk] * tCritWeekly * leverage
+                             : null;
+                row[bk]       = mean;
+                row[bk+'_lo'] = hw != null ? mean - hw : null;
+                row[bk+'_hi'] = hw != null ? mean + hw : null;
+                // Mean baseline columns
+                const wm = wkMean[wk];
+                const sd = wkSD_smooth[wk];
+                if (wm != null && sd != null) {
+                  const mhw = sd * tMean * Math.sqrt(1 + 1/reg.n);
+                  row[bk+'_mean']    = wm;
+                  row[bk+'_mean_lo'] = wm - mhw;
+                  row[bk+'_mean_hi'] = wm + mhw;
+                } else {
+                  row[bk+'_mean'] = row[bk+'_mean_lo'] = row[bk+'_mean_hi'] = null;
+                }
+                // Log-linear baseline columns
+                if (regLog && wkLogSE_smooth[wk] != null) {
+                  const logPredLevel = regLog.slope * yr + regLog.intercept;
+                  const logMean = logPredLevel + Math.log(shape[wk] / shapeSum);
+                  const lhw = wkLogSE_smooth[wk] * tCritWeekly * leverage;
+                  row[bk+'_loglin']    = Math.exp(logMean);
+                  row[bk+'_loglin_lo'] = Math.exp(logMean - lhw);
+                  row[bk+'_loglin_hi'] = Math.exp(logMean + lhw);
+                } else {
+                  row[bk+'_loglin'] = row[bk+'_loglin_lo'] = row[bk+'_loglin_hi'] = null;
+                }
+              }
+            });
+          });
+        });
+
+        allData = rawData;
+      }
+
+      // ── 4. Derive COUNTRIES list from data (sorted, preserve insertion order) ─
+      const countrySet = new Set();
+      allData.forEach(r => { if (r.Country) countrySet.add(r.Country); });
+      COUNTRIES = Array.from(countrySet).sort();
+
+      // ── 5. Derive DATA_START: first year each country has any data ────────
+      DATA_START = {};
+      allData.forEach(r => {
+        if (!r.TIME_PERIOD || !isFinite(r.ASMR_per_100k)) return;
+        const yr = parseInt(r.TIME_PERIOD.split('-')[0], 10);
+        if (DATA_START[r.Country] === undefined || yr < DATA_START[r.Country]) {
+          DATA_START[r.Country] = yr;
+        }
+      });
+      // Only store entries that differ from the global minimum (2009) to keep
+      // countryCanUseBaseline logic intact (it uses DATA_START[c] ?? 2009)
+      const globalMin = Math.min(...Object.values(DATA_START));
+      Object.keys(DATA_START).forEach(c => {
+        if (DATA_START[c] === globalMin) delete DATA_START[c];
+      });
+
+      // ── 6. Incomplete-2025 detection (unchanged logic) ────────────────────
+      incomplete2025Keys.clear();
+      const w52Set = new Set();
+      allData.forEach(r => {
+        if (r.TIME_PERIOD === '2025-W52' && isFinite(r.ASMR_per_100k)) {
+          w52Set.add(r.Country + '|' + r.age);
+        }
+      });
+      const combos2025 = new Set();
+      allData.forEach(r => {
+        if (r.TIME_PERIOD && r.TIME_PERIOD.startsWith('2025')) {
+          combos2025.add(r.Country + '|' + r.age);
+        }
+      });
+      combos2025.forEach(key => {
+        if (!w52Set.has(key)) incomplete2025Keys.add(key);
+      });
+
+      // ── 7. Derive YR_END from the maximum year in the data ───────────────
+      let maxYr = 2025;
+      allData.forEach(r => {
+        if (r.TIME_PERIOD) {
+          const yr = parseInt(r.TIME_PERIOD.split('-')[0], 10);
+          if (yr > maxYr) maxYr = yr;
+        }
+      });
+      YR_END = maxYr;
+
+      // ── 8. Fix default selCountries to valid countries from this CSV ──────
+      const validDefaults = ['Sweden','Hungary'].filter(c => COUNTRIES.includes(c));
+      selCountries = new Set(validDefaults.length ? validDefaults : [COUNTRIES[0]]);
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      buildChips();
+      rebuildBaselineTabs();
+      syncUIToState();
+      buildChart();
+    }
+  });
+}
+
+// Sync all UI widgets to the JS state variables (called once after data loads)
+function syncUIToState() {
+  // Age select
+  document.getElementById('age-select').value = selAge;
+
+  // View buttons
+  ['weekly','annual','seasonal'].forEach(id => {
+    document.getElementById('view-' + id).className =
+      'tab-btn' + (viewMode === id ? ' active-gold' : '');
+  });
+
+  // Start year slider
+  document.getElementById('yr-start').value = yrStart;
+  document.getElementById('yr-s-lbl').textContent = yrStart;
+  document.getElementById('start-label').textContent =
+    viewMode === 'seasonal' ? 'Start Season' : 'Start Year';
+
+  // CI / Baseline toggles
+  document.getElementById('toggle-ci').className =
+    'toggle-btn' + (showCI ? ' on' : '');
+  document.getElementById('toggle-baseline').className =
+    'toggle-btn' + (showBaseline ? ' on' : '');
+}
+
+// ── Baseline tabs ─────────────────────────────────────────────────────────────
+
+function getBaselineDefs() {
+  return viewMode === 'seasonal' ? BASELINES_SEASONAL : BASELINES_YEAR;
+}
+
+function rebuildBaselineTabs() {
+  const container = document.getElementById('baseline-tabs');
+  container.innerHTML = '';
+  getBaselineDefs().forEach(def => {
+    const btn = document.createElement('div');
+    btn.className = 'tab-btn' + (def.key === selBaseline ? ' active' : '');
+    btn.textContent = def.label;
+    btn.dataset.key = def.key;
+    btn.addEventListener('click', () => {
+      selBaseline = def.key;
+      rebuildBaselineTabs();
+      buildChart();
+    });
+    container.appendChild(btn);
+  });
+}
+
+// ── Baseline type toggle ─────────────────────────────────────────────────────
+
+function setBlType(type) {
+  selBlType = type;
+  document.getElementById('bltype-trend' ).className = 'tab-btn' + (type==='trend'  ? ' active' : '');
+  document.getElementById('bltype-loglin').className = 'tab-btn' + (type==='loglin' ? ' active' : '');
+  document.getElementById('bltype-mean'  ).className = 'tab-btn' + (type==='mean'   ? ' active' : '');
+  buildChart();
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+
+function buildChips() {
+  const el = document.getElementById('country-chips');
+  el.innerHTML = '';
+  COUNTRIES.forEach(c => {
+    const chip = document.createElement('div');
+    const active = selCountries.has(c);
+    chip.className = 'country-chip' + (active ? ' active' : '');
+    chip.textContent = c;
+    if (active) applyChipStyle(chip, c);
+    chip.onclick = () => {
+      if (selCountries.has(c)) {
+        if (selCountries.size === 1) return;
+        selCountries.delete(c);
+        chip.classList.remove('active');
+        chip.style.borderColor = chip.style.color = chip.style.background = '';
+      } else {
+        selCountries.add(c);
+        chip.classList.add('active');
+        applyChipStyle(chip, c);
+      }
+      buildChart();
+    };
+    el.appendChild(chip);
+  });
+}
+
+function applyChipStyle(chip, c) {
+  chip.style.borderColor = cc(c);
+  chip.style.color = cc(c);
+  chip.style.background = cc(c) + '1a';
+}
+
+document.getElementById('age-select').addEventListener('change', e => {
+  selAge = e.target.value; buildChart();
+});
+
+function setView(v) {
+  viewMode = v;
+  ['weekly','annual','seasonal'].forEach(id => {
+    document.getElementById('view-' + id).className = 'tab-btn' + (v === id ? ' active-gold' : '');
+  });
+  document.getElementById('start-label').textContent =
+    v === 'seasonal' ? 'Start Season' : 'Start Year';
+  rebuildBaselineTabs();
+  buildChart();
+}
+
+function toggleOpt(k) {
+  if (k === 'ci') showCI = !showCI;
+  if (k === 'baseline') showBaseline = !showBaseline;
+  document.getElementById('toggle-' + k).classList.toggle('on', k === 'ci' ? showCI : showBaseline);
+  buildChart();
+}
+
+function onYearRange() {
+  yrStart = +document.getElementById('yr-start').value;
+  document.getElementById('yr-s-lbl').textContent = yrStart;
+  buildChart();
+}
+
+// ── Per-country baseline eligibility ─────────────────────────────────────────
+
+function countryCanUseBaseline(country) {
+  const def = getBaselineDefs().find(d => d.key === selBaseline);
+  if (!def) return false;
+  return (DATA_START[country] ?? 2009) <= def.blStart;
+}
+
+// ── Math helpers ──────────────────────────────────────────────────────────────
+
+function tCritical95(df) {
+  if (df <= 0) return 12.706;
+  const table = [12.706,4.303,3.182,2.776,2.571,2.447,2.365,2.306,2.262,2.228];
+  if (df <= 10) return table[df - 1];
+  if (df <= 15) return 2.131;
+  if (df <= 20) return 2.086;
+  if (df <= 30) return 2.042;
+  return 1.960;
+}
+
+function linearRegression(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return null;
+  const xMean = xs.reduce((s,v)=>s+v,0)/n;
+  const yMean = ys.reduce((s,v)=>s+v,0)/n;
+  const Sxx = xs.reduce((s,v)=>s+(v-xMean)**2,0);
+  const Sxy = xs.reduce((s,v,i)=>s+(v-xMean)*(ys[i]-yMean),0);
+  const slope = Sxy/Sxx;
+  const intercept = yMean - slope*xMean;
+  const SSres = xs.reduce((s,v,i)=>s+(ys[i]-(slope*v+intercept))**2,0);
+  const residualSE = Math.sqrt(SSres/Math.max(n-2,1));
+  return { slope, intercept, residualSE, xMean, Sxx, n, tCrit:tCritical95(n-2) };
+}
+
+function predInterval(reg, x) {
+  const pred = reg.slope*x + reg.intercept;
+  // Full prediction interval including leverage penalty — correct for annual/seasonal
+  // where each data point is a single aggregated observation and extrapolation
+  // uncertainty genuinely grows with distance from the training window.
+  const hw = reg.residualSE * reg.tCrit * Math.sqrt(1 + 1/reg.n + (x-reg.xMean)**2/reg.Sxx);
+  return { mean:pred, lo:pred-hw, hi:pred+hw };
+}
+
+// Log-linear prediction interval.
+// reg is fit on log(ASMR) values; predictions are back-transformed via exp().
+// CI bounds are computed in log space then exponentiated, giving a slightly
+// asymmetric interval that is physically correct (cannot cross zero).
+// For typical mortality SE_log values (~0.01-0.02) the asymmetry is negligible.
+function predIntervalLogLinear(reg, x) {
+  const logPred = reg.slope * x + reg.intercept;
+  const hw = reg.residualSE * reg.tCrit * Math.sqrt(1 + 1/reg.n + (x - reg.xMean)**2 / reg.Sxx);
+  return { mean: Math.exp(logPred), lo: Math.exp(logPred - hw), hi: Math.exp(logPred + hw) };
+}
+
+// ── Weekly ────────────────────────────────────────────────────────────────────
+
+function filteredWeekly(countries) {
+  return allData.filter(r => {
+    if (!countries.has(r.Country)) return false;
+    if (r.age !== selAge) return false;
+    const yr = parseInt(r.TIME_PERIOD.split('-')[0], 10);
+    return yr >= yrStart && yr <= YR_END;
+  }).sort((a,b) => a.TIME_PERIOD < b.TIME_PERIOD ? -1 : 1);
+}
+
+// ── Annual ────────────────────────────────────────────────────────────────────
+
+function buildAnnualSeries(country) {
+  const def = getBaselineDefs().find(d => d.key === selBaseline);
+  const canBL = countryCanUseBaseline(country);
+  const suppress2025 = incomplete2025Keys.has(country + '|' + selAge);
+
+  const rows = allData.filter(r => r.Country === country && r.age === selAge)
+    .sort((a,b) => a.TIME_PERIOD < b.TIME_PERIOD ? -1 : 1);
+
+  const byYear = {};
+  rows.forEach(r => {
+    const yr = parseInt(r.TIME_PERIOD.split('-')[0], 10);
+    const wk = parseInt(r.TIME_PERIOD.split('-W')[1], 10);
+    if (!byYear[yr]) byYear[yr] = [];
+    byYear[yr].push({ wk, asmr: r.ASMR_per_100k });
+  });
+
+  const allYears = Object.keys(byYear).map(Number).sort((a,b)=>a-b);
+  const obsMap = {};
+  allYears.forEach(yr => {
+    if (yr === 2025 && suppress2025) return;
+    const vals = byYear[yr].map(w=>w.asmr).filter(v=>!isNaN(v));
+    if (vals.length === 0) return;
+    const raw = vals.reduce((s,v)=>s+v,0);
+    // Normalise to a 52-week year: if the year contains a W53, scale down by 52/53
+    const weekCount = byYear[yr].length;
+    obsMap[yr] = weekCount > 52 ? raw * 52 / weekCount : raw;
+  });
+
+  let reg = null, regLog = null, meanBL = null, meanLo = null, meanHi = null;
+  if (canBL) {
+    const trainX=[], trainY=[];
+    for (let yr=def.blStart; yr<=def.blEnd; yr++) {
+      if (obsMap[yr]!=null) { trainX.push(yr); trainY.push(obsMap[yr]); }
+    }
+    reg = linearRegression(trainX, trainY);
+    // Log-linear: regress on log(ASMR)
+    const logY = trainY.map(v => Math.log(v));
+    regLog = linearRegression(trainX, logY);
+    // Mean baseline: flat average of training sums ± t(n-1)·SD·sqrt(1+1/n)
+    if (trainY.length >= 2) {
+      const n  = trainY.length;
+      const m  = trainY.reduce((s,v)=>s+v,0) / n;
+      const sd = Math.sqrt(trainY.reduce((s,v)=>s+(v-m)**2,0) / Math.max(n-1,1));
+      const hw = sd * tCritical95(n-1) * Math.sqrt(1 + 1/n);
+      meanBL = m; meanLo = m - hw; meanHi = m + hw;
+    }
+  }
+
+  const displayYears = allYears.filter(yr => yr >= yrStart && yr <= YR_END);
+  const obs=[], bm=[], bl=[], bh=[];
+  displayYears.forEach(yr => {
+    obs.push(obsMap[yr] ?? null);
+    if (selBlType === 'mean' && meanBL != null) {
+      bm.push(meanBL); bl.push(meanLo); bh.push(meanHi);
+    } else if (selBlType === 'loglin' && regLog) {
+      const p=predIntervalLogLinear(regLog,yr); bm.push(p.mean); bl.push(p.lo); bh.push(p.hi);
+    } else if (reg) {
+      const p=predInterval(reg,yr); bm.push(p.mean); bl.push(p.lo); bh.push(p.hi);
+    } else {
+      bm.push(null); bl.push(null); bh.push(null);
+    }
+  });
+  return { years:displayYears, obs, bm, bl, bh, canBL };
+}
+
+// ── Seasonal ──────────────────────────────────────────────────────────────────
+
+function getSeasonKey(yr, wk) { return wk >= 26 ? yr : yr - 1; }
+
+function seasonLabel(sk) {
+  return String(sk%100).padStart(2,'0') + '/' + String((sk+1)%100).padStart(2,'0');
+}
+
+function buildSeasonalSeries(country) {
+  const def = getBaselineDefs().find(d => d.key === selBaseline);
+  const canBL = countryCanUseBaseline(country);
+  const firstSeason = DATA_START[country] ?? 2009;
+
+  const rows = allData.filter(r => r.Country === country && r.age === selAge)
+    .sort((a,b) => a.TIME_PERIOD < b.TIME_PERIOD ? -1 : 1);
+
+  const bySeason = {};
+  rows.forEach(r => {
+    const yr = parseInt(r.TIME_PERIOD.split('-')[0], 10);
+    const wk = parseInt(r.TIME_PERIOD.split('-W')[1], 10);
+    const sk = getSeasonKey(yr, wk);
+    if (!bySeason[sk]) bySeason[sk] = [];
+    bySeason[sk].push({ yr, wk, asmr: r.ASMR_per_100k });
+  });
+
+  const allSeasons = Object.keys(bySeason).map(Number).sort((a,b)=>a-b);
+  const obsMap = {};
+  allSeasons.forEach(sk => {
+    const vals = bySeason[sk].map(w=>w.asmr).filter(v=>!isNaN(v));
+    if (vals.length === 0) return;
+    const raw = vals.reduce((s,v)=>s+v,0);
+    // Normalise to a 52-week season: if the season contains a W53, scale down by 52/53
+    const weekCount = bySeason[sk].length;
+    obsMap[sk] = weekCount > 52 ? raw * 52 / weekCount : raw;
+  });
+
+  let reg = null, regLog = null, meanBL = null, meanLo = null, meanHi = null;
+  if (canBL) {
+    const trainX=[], trainY=[];
+    for (let sk=def.blStart; sk<=def.blEnd; sk++) {
+      if (obsMap[sk]!=null) { trainX.push(sk); trainY.push(obsMap[sk]); }
+    }
+    reg = linearRegression(trainX, trainY);
+    const logY = trainY.map(v => Math.log(v));
+    regLog = linearRegression(trainX, logY);
+    if (trainY.length >= 2) {
+      const n  = trainY.length;
+      const m  = trainY.reduce((s,v)=>s+v,0) / n;
+      const sd = Math.sqrt(trainY.reduce((s,v)=>s+(v-m)**2,0) / Math.max(n-1,1));
+      const hw = sd * tCritical95(n-1) * Math.sqrt(1 + 1/n);
+      meanBL = m; meanLo = m - hw; meanHi = m + hw;
+    }
+  }
+
+  const displaySeasons = allSeasons.filter(sk =>
+    sk >= yrStart && sk < YR_END && sk >= firstSeason
+  );
+
+  const obs=[], bm=[], bl=[], bh=[];
+  displaySeasons.forEach(sk => {
+    obs.push(obsMap[sk] ?? null);
+    if (selBlType === 'mean' && meanBL != null) {
+      bm.push(meanBL); bl.push(meanLo); bh.push(meanHi);
+    } else if (selBlType === 'loglin' && regLog) {
+      const p=predIntervalLogLinear(regLog,sk); bm.push(p.mean); bl.push(p.lo); bh.push(p.hi);
+    } else if (reg) {
+      const p=predInterval(reg,sk); bm.push(p.mean); bl.push(p.lo); bh.push(p.hi);
+    } else {
+      bm.push(null); bl.push(null); bh.push(null);
+    }
+  });
+  return { seasons:displaySeasons, obs, bm, bl, bh, canBL };
+}
+
+// ── Chart dispatch ────────────────────────────────────────────────────────────
+
+function buildChart() {
+  if (viewMode==='weekly')        buildWeeklyChart();
+  else if (viewMode==='annual')   buildAnnualChart();
+  else                            buildSeasonalChart();
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+
+function buildTooltipCallbacks() {
+  return {
+    title: items => items[0]?.label ?? '',
+    label: () => null,
+    afterBody(items) {
+      if (!items.length) return [];
+      const idx = items[0].dataIndex;
+      const datasets = items[0].chart.data.datasets;
+      const dsMap = {};
+      datasets.forEach(ds => { dsMap[ds.label] = ds.data; });
+
+      const lines = [];
+      const countries = Array.from(selCountries);
+
+      countries.forEach(country => {
+        const obs = dsMap[country]?.[idx];
+        const bm  = dsMap[country + ' Baseline']?.[idx];
+        const lo  = dsMap[country + ' CI Lower']?.[idx];
+        const hi  = dsMap[country + ' CI Upper']?.[idx];
+
+        if (obs == null) return;
+
+        if (bm == null) {
+          lines.push(` ${country}  ${obs.toFixed(1)}`);
+        } else {
+          const excess = obs - bm;
+          const sign = excess >= 0 ? '+' : '';
+          if (lo != null && hi != null) {
+            const exLo = obs - hi;
+            const exHi = obs - lo;
+            lines.push(
+              ` ${country}  ${obs.toFixed(1)}`,
+              `  Excess: ${sign}${excess.toFixed(1)} [${exLo.toFixed(1)}, ${exHi.toFixed(1)}]`
+            );
+          } else {
+            lines.push(` ${country}  ${obs.toFixed(1)}`, `  Excess: ${sign}${excess.toFixed(1)}`);
+          }
+        }
+        if (countries.length > 1) lines.push('');
+      });
+
+      while (lines.length && lines[lines.length-1] === '') lines.pop();
+      return lines;
+    }
+  };
+}
+
+// ── Weekly chart ──────────────────────────────────────────────────────────────
+
+function buildWeeklyChart() {
+  const countries = Array.from(selCountries);
+  const labelSet = new Set();
+  countries.forEach(c => filteredWeekly(new Set([c])).forEach(r => labelSet.add(r.TIME_PERIOD)));
+  const labels = Array.from(labelSet).sort();
+  const labelYearMap = labels.map(l => parseInt(l.split('-')[0], 10));
+
+  const datasets = [];
+  countries.forEach(country => {
+    const cdata = filteredWeekly(new Set([country]));
+    const map = {};
+    cdata.forEach(r => map[r.TIME_PERIOD] = r);
+    const col = cc(country);
+    const canBL = countryCanUseBaseline(country);
+
+    const asmr = labels.map(l => map[l]?.ASMR_per_100k ?? null);
+    const blSuffix = selBlType === 'mean' ? '_mean' : selBlType === 'loglin' ? '_loglin' : '';
+    const base = labels.map(l => (canBL && map[l]) ? (map[l][selBaseline+blSuffix]       ?? null) : null);
+    const lo   = labels.map(l => (canBL && map[l]) ? (map[l][selBaseline+blSuffix+'_lo'] ?? null) : null);
+    const hi   = labels.map(l => (canBL && map[l]) ? (map[l][selBaseline+blSuffix+'_hi'] ?? null) : null);
+
+    if (showCI && canBL) {
+      datasets.push({ label:country+' CI Upper', data:hi, borderColor:'transparent', backgroundColor:col+'22', fill:'+1', pointRadius:0, tension:0.3, order:10 });
+      datasets.push({ label:country+' CI Lower', data:lo, borderColor:'transparent', backgroundColor:col+'22', fill:false, pointRadius:0, tension:0.3, order:10 });
+    } else if (canBL) {
+      datasets.push({ label:country+' CI Upper', data:hi, borderColor:'transparent', backgroundColor:'transparent', fill:'+1', pointRadius:0, tension:0.3, order:10, hidden:true });
+      datasets.push({ label:country+' CI Lower', data:lo, borderColor:'transparent', backgroundColor:'transparent', fill:false, pointRadius:0, tension:0.3, order:10, hidden:true });
+    }
+    if (showBaseline && canBL) {
+      datasets.push({ label:country+' Baseline', data:base, borderColor:col+'88', borderWidth:1.5, borderDash:[4,3], pointRadius:0, tension:0.3, fill:false, order:5 });
+    } else if (canBL) {
+      datasets.push({ label:country+' Baseline', data:base, borderColor:'transparent', pointRadius:0, tension:0.3, fill:false, order:5, hidden:true });
+    }
+    datasets.push({ label:country, data:asmr, borderColor:col, borderWidth:2, pointRadius:0, tension:0.3, fill:false, order:1 });
+  });
+
+  const ageLabel = selAge==='all ages' ? 'All Ages' : 'Age '+selAge;
+  const blDef = getBaselineDefs().find(d=>d.key===selBaseline);
+  document.getElementById('chart-title').textContent =
+    countries.length>1 ? ageLabel+' · Multi-Country' : countries[0]+' · '+ageLabel;
+  document.getElementById('chart-sub').textContent =
+    'ASMR per 100,000 · Weekly · '+(selBlType==='mean'?'Mean':selBlType==='loglin'?'Log-linear':'Trend')+' baseline '+blDef.label;
+
+  renderChart(labels, datasets, {
+    xTickCb(val, idx) {
+      const yr = labelYearMap[idx];
+      if (idx===0 || labelYearMap[idx-1]!==yr) return yr;
+      return '';
+    },
+    yLabel: 'Deaths / 100k'
+  });
+}
+
+// ── Annual chart ──────────────────────────────────────────────────────────────
+
+function buildAnnualChart() {
+  const countries = Array.from(selCountries);
+  const yearSet = new Set();
+  countries.forEach(c => buildAnnualSeries(c).years.forEach(y => yearSet.add(y)));
+  const labels = Array.from(yearSet).sort((a,b)=>a-b).map(String);
+
+  const datasets = [];
+  countries.forEach(country => {
+    const s = buildAnnualSeries(country);
+    const col = cc(country);
+    const yMap = {};
+    s.years.forEach((yr,i) => { yMap[yr]={obs:s.obs[i],bm:s.bm[i],bl:s.bl[i],bh:s.bh[i]}; });
+    const obs  = labels.map(l => yMap[+l]?.obs ?? null);
+    const base = labels.map(l => yMap[+l]?.bm  ?? null);
+    const lo   = labels.map(l => yMap[+l]?.bl  ?? null);
+    const hi   = labels.map(l => yMap[+l]?.bh  ?? null);
+
+    if (showCI && s.canBL) {
+      datasets.push({ label:country+' CI Upper', data:hi, borderColor:'transparent', backgroundColor:col+'22', fill:'+1', pointRadius:0, tension:0.3, order:10 });
+      datasets.push({ label:country+' CI Lower', data:lo, borderColor:'transparent', backgroundColor:col+'22', fill:false, pointRadius:0, tension:0.3, order:10 });
+    } else if (s.canBL) {
+      datasets.push({ label:country+' CI Upper', data:hi, borderColor:'transparent', backgroundColor:'transparent', fill:'+1', pointRadius:0, tension:0.3, order:10, hidden:true });
+      datasets.push({ label:country+' CI Lower', data:lo, borderColor:'transparent', backgroundColor:'transparent', fill:false, pointRadius:0, tension:0.3, order:10, hidden:true });
+    }
+    if (showBaseline && s.canBL) {
+      datasets.push({ label:country+' Baseline', data:base, borderColor:col+'88', borderWidth:1.5, borderDash:[4,3], pointRadius:4, pointBackgroundColor:col+'88', tension:0.3, fill:false, order:5 });
+    } else if (s.canBL) {
+      datasets.push({ label:country+' Baseline', data:base, borderColor:'transparent', pointRadius:0, tension:0.3, fill:false, order:5, hidden:true });
+    }
+    datasets.push({ label:country, data:obs, borderColor:col, borderWidth:2, pointRadius:5, pointHoverRadius:7, pointBackgroundColor:col, tension:0.3, fill:false, order:1 });
+  });
+
+  const ageLabel = selAge==='all ages' ? 'All Ages' : 'Age '+selAge;
+  const blDef = getBaselineDefs().find(d=>d.key===selBaseline);
+  document.getElementById('chart-title').textContent =
+    countries.length>1 ? ageLabel+' · Multi-Country (Annual)' : countries[0]+' · '+ageLabel+' · Annual';
+  document.getElementById('chart-sub').textContent =
+    'Summed ASMR per 100,000 · Annual (52-week normalised) · '+(selBlType==='mean'?'Mean':selBlType==='loglin'?'Log-linear':'Trend')+' baseline '+blDef.label;
+
+  renderChart(labels, datasets, {
+    xTickCb: (val,idx) => labels[idx],
+    yLabel: 'Sum ASMR / 100k'
+  });
+}
+
+// ── Seasonal chart ────────────────────────────────────────────────────────────
+
+function buildSeasonalChart() {
+  const countries = Array.from(selCountries);
+  const seasonSet = new Set();
+  countries.forEach(c => buildSeasonalSeries(c).seasons.forEach(s => seasonSet.add(s)));
+  const seasonKeys = Array.from(seasonSet).sort((a,b)=>a-b);
+  const labels = seasonKeys.map(seasonLabel);
+
+  const datasets = [];
+  countries.forEach(country => {
+    const s = buildSeasonalSeries(country);
+    const col = cc(country);
+    const sMap = {};
+    s.seasons.forEach((sk,i) => { sMap[sk]={obs:s.obs[i],bm:s.bm[i],bl:s.bl[i],bh:s.bh[i]}; });
+    const obs  = seasonKeys.map(sk => sMap[sk]?.obs ?? null);
+    const base = seasonKeys.map(sk => sMap[sk]?.bm  ?? null);
+    const lo   = seasonKeys.map(sk => sMap[sk]?.bl  ?? null);
+    const hi   = seasonKeys.map(sk => sMap[sk]?.bh  ?? null);
+
+    if (showCI && s.canBL) {
+      datasets.push({ label:country+' CI Upper', data:hi, borderColor:'transparent', backgroundColor:col+'22', fill:'+1', pointRadius:0, tension:0.3, order:10 });
+      datasets.push({ label:country+' CI Lower', data:lo, borderColor:'transparent', backgroundColor:col+'22', fill:false, pointRadius:0, tension:0.3, order:10 });
+    } else if (s.canBL) {
+      datasets.push({ label:country+' CI Upper', data:hi, borderColor:'transparent', backgroundColor:'transparent', fill:'+1', pointRadius:0, tension:0.3, order:10, hidden:true });
+      datasets.push({ label:country+' CI Lower', data:lo, borderColor:'transparent', backgroundColor:'transparent', fill:false, pointRadius:0, tension:0.3, order:10, hidden:true });
+    }
+    if (showBaseline && s.canBL) {
+      datasets.push({ label:country+' Baseline', data:base, borderColor:col+'88', borderWidth:1.5, borderDash:[4,3], pointRadius:4, pointBackgroundColor:col+'88', tension:0.3, fill:false, order:5 });
+    } else if (s.canBL) {
+      datasets.push({ label:country+' Baseline', data:base, borderColor:'transparent', pointRadius:0, tension:0.3, fill:false, order:5, hidden:true });
+    }
+    datasets.push({ label:country, data:obs, borderColor:col, borderWidth:2, pointRadius:5, pointHoverRadius:7, pointBackgroundColor:col, tension:0.3, fill:false, order:1 });
+  });
+
+  const ageLabel = selAge==='all ages' ? 'All Ages' : 'Age '+selAge;
+  const blDef = getBaselineDefs().find(d=>d.key===selBaseline);
+  document.getElementById('chart-title').textContent =
+    countries.length>1 ? ageLabel+' · Multi-Country (Seasonal)' : countries[0]+' · '+ageLabel+' · Seasonal';
+  document.getElementById('chart-sub').textContent =
+    'Summed ASMR per 100,000 · Season W26–W25 (52-week normalised) · '+(selBlType==='mean'?'Mean':selBlType==='loglin'?'Log-linear':'Trend')+' baseline '+blDef.label;
+
+  renderChart(labels, datasets, {
+    xTickCb: (val,idx) => labels[idx],
+    yLabel: 'Sum ASMR / 100k'
+  });
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function renderChart(labels, datasets, { xTickCb, yLabel }) {
+  const ctx = document.getElementById('main-chart').getContext('2d');
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { display:false },
+        tooltip: {
+          backgroundColor:'#1c2030',
+          borderColor:'#252a3a',
+          borderWidth:1,
+          titleColor:'#9ca3af',
+          bodyColor:'#e8eaf0',
+          titleFont:{ family:'DM Mono', size:10 },
+          bodyFont:{ family:'DM Mono', size:10 },
+          padding:10,
+          callbacks: buildTooltipCallbacks()
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color:'#6b7280', font:{family:'DM Mono',size:10}, maxRotation:0, autoSkip:false, callback:xTickCb },
+          grid: { color:'rgba(37,42,58,0.6)', drawTicks:false },
+          border: { color:'#252a3a' }
+        },
+        y: {
+          ticks: { color:'#6b7280', font:{family:'DM Mono',size:10}, maxTicksLimit:8, callback:v=>v?.toFixed(1) },
+          grid: { color:'rgba(37,42,58,0.6)', drawTicks:false },
+          border: { color:'#252a3a' },
+          title: { display:true, text:yLabel, color:'#6b7280', font:{family:'DM Mono',size:10} }
+        }
+      },
+      animation: { duration:300, easing:'easeInOutQuart' }
+    }
+  });
+}
+
+tryAutoLoad();
+</script>
+</body>
+</html>
