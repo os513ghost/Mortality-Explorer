@@ -344,12 +344,16 @@ let chart = null;
 // ── Load ──────────────────────────────────────────────────────────────────────
 
 async function tryAutoLoad() {
-  const candidates = ['Live_ASMR.csv', 'Claude_ASMR_baselines_4.csv'];
+  // Append timestamp to bypass any CDN or browser cache on GitHub Pages.
+  // Try both likely filenames; the fetch is case-sensitive on GitHub's servers.
+  const candidates = ['Live_ASMR.csv', 'live_asmr.csv', 'Claude_ASMR_baselines_4.csv'];
   for (const filename of candidates) {
     try {
-      const r = await fetch(filename);
+      const r = await fetch(filename + '?v=' + Date.now(), { cache: 'no-cache' });
       if (!r.ok) continue;
-      parseCSV(await r.text());
+      const text = await r.text();
+      if (!text || text.trim().length < 10) continue;
+      parseCSV(text);
       return;
     } catch {}
   }
@@ -1287,7 +1291,14 @@ function renderChart(labels, datasets, { xTickCb, yLabel }) {
   });
 }
 
-tryAutoLoad();
+// Wait for window load so CDN scripts (PapaParse, Chart.js) are fully ready
+// before attempting the auto-fetch. DOMContentLoaded fires too early for
+// external scripts loaded from cdnjs.
+if (document.readyState === 'complete') {
+  tryAutoLoad();
+} else {
+  window.addEventListener('load', tryAutoLoad);
+}
 </script>
 </body>
 </html>
