@@ -155,8 +155,7 @@
   <h3>Weekly view</h3>
   <p>
     Individual weekly ASMR values plotted directly, with the baseline and confidence
-    interval described below overlaid. This is the most sensitive view for detecting
-    short, sharp excess events such as the COVID-19 spring 2020 wave.
+    interval described below overlaid.
   </p>
 
   <!-- ── BASELINE ──────────────────────────────────────────────────────────── -->
@@ -192,31 +191,27 @@
   <p>
     <strong>Mean</strong> — a flat horizontal line at the average of the baseline-period annual
     (or seasonal, or weekly) values. Simpler and more transparent; useful as a cross-check
-    and for audiences unfamiliar with trend adjustment. Because it ignores the declining trend,
-    the mean baseline will appear increasingly conservative for years well beyond the training window —
-    post-2020 years will tend to look elevated even in the absence of genuine excess.
+    and for audiences unfamiliar with trend adjustment. Because it ignores the largely declining trend,
+    the mean baseline will appear too high for years well beyond the training window.
+  .
   </p>
   <p>
     <strong>Log-linear</strong> — fits the regression on the natural logarithm of ASMR rather than
     the raw value, equivalent to modelling a constant <em>percentage</em> decline per year rather
-    than a constant absolute decline. This is well-grounded in demographic and actuarial literature,
-    where mortality improvement is typically described as a proportional rate. The projected baseline
-    curves gently (it is convex rather than straight) and cannot cross zero, which is physically
-    correct. Confidence intervals are computed in log space and back-transformed via exponentiation,
-    giving a slightly asymmetric band that is wider above the baseline than below — again, physically
-    appropriate. In practice, for typical European mortality data the difference from the linear
-    trend is modest (a few units of ASMR at 2025), but the log-linear projection is marginally
-    higher at distance from the training window, making it the more conservative of the two
-    trend-based approaches.
+    than a constant absolute decline. The projected baseline curves gently (it is convex rather than straight) 
+    and cannot cross zero, which is physically correct. Confidence intervals are computed in log space and 
+    back-transformed via exponentiation, giving a slightly asymmetric band that is wider above the baseline than below — again, physically
+    appropriate.
   </p>
 
   <h3>Weekly baselines — EuroMOMO-style method</h3>
   <p>
-    A per-week OLS regression on raw weekly ASMR is noisy because it treats each
-    week in isolation and ignores the strong seasonal structure of mortality.
-    Instead, the weekly baseline follows the approach used by
+    A per-week (week specific) OLS regression on weekly ASMR is noisy because it treats each
+    week in isolation and strictly ignores the strong seasonal structure of mortality.As baselines
+    are projected far beyond the training period,they tend to get erratic and swell beyond plausibility.
+    Instead, the weekly baseline (kind of) follows the approach used by
     <a href="https://www.euromomo.eu" target="_blank" rel="noopener">EuroMOMO</a>,
-    decomposing the problem into a <em>seasonal shape</em> and an <em>annual trend level</em>:
+    mitigating the problem.
   </p>
 
   <h3>Step 1 — Seasonal shape</h3>
@@ -234,7 +229,7 @@
     early-autumn periods are epidemiologically stable: the winter flu peak has
     cleared, the summer trough has not yet begun. Using only shoulder weeks
     insulates the annual level estimate from years with unusually severe flu
-    seasons or summer heat events.
+    seasons or summer isolated heat events, such as they are.
   </p>
   <div class="formula">
     annual_level(year) = Σ ASMR(shoulder weeks) × shape_total / shape_shoulder
@@ -288,7 +283,7 @@
   <p>
     The weekly CI uses the same prediction interval formula and leverage structure.
     Rather than a single regression SE, however, each week-of-year carries its own
-    <strong>per-week residual SE</strong>, computed from the residuals
+    <strong>per-week (week specific) residual SE</strong>, computed from the residuals
     (observed ASMR − predicted baseline) for that week across all training years.
     This naturally produces wide bands for volatile winter weeks and narrow bands
     for stable shoulder weeks — reflecting the true epidemiological uncertainty
@@ -305,7 +300,7 @@
     The per-week SE values are smoothed with a short circular moving average
     (5-week window for age 15–44, 3-week for all others) to remove estimation
     noise from the visual appearance of the CI band, without affecting significance
-    conclusions. Circular wrapping at W52→W01 prevents a discontinuity at year boundaries.
+    conclusions (much). Circular wrapping at W52→W01 prevents a discontinuity at year boundaries.
   </p>
   <p>
     The weekly CI uses a <strong>fixed-width</strong> interval — the leverage term
@@ -337,7 +332,7 @@
 
   <div class="callout">
     <strong>Important.</strong> A year or week falling outside the 95% CI indicates
-    that the observed mortality is statistically unusual relative to the historical
+    that the observed mortality may be statistically unusual relative to the historical
     trend — not that a specific cause has been identified. These intervals are
     intended for exploratory visualisation and should not be treated as formal
     epidemiological excess mortality estimates.
@@ -366,7 +361,7 @@
   <p>
     † The 2015–19 baseline produces only 4 seasonal training points (df = 2, t ≈ 4.3),
     so seasonal confidence intervals for this window are very wide.
-    Baselines with fewer than 5 training years are suppressed in the weekly view.
+    Baselines with fewer than 5 training years are suppressed in the weekly (& annual) view.
   </p>
 
   <!-- ── SOURCES ──────────────────────────────────────────────────────────── -->
