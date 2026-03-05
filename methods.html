@@ -131,7 +131,7 @@
     A small number of country-specific adjustments apply: Israel uses the 0–19 age group
     only; Germany uses 10-year bins below age 40 (20–44 observations); Sweden includes
     deaths recorded with an unknown week of death (W99). All 2025 data are preliminary
-    and subject to revision.
+    and subject to revision. Causes of deaths separate details are in the Causes of death section below.
   </p>
 
   <!-- ── VIEWS ─────────────────────────────────────────────────────────────── -->
@@ -367,11 +367,12 @@
   <!-- ── CAUSES OF DEATH EXPLORER ─────────────────────────────────────────── -->
   <h2>Causes of Death Explorer</h2>
   <p>
-    The <a href="causes.html">Causes of Death Explorer</a> is a companion page that
-    displays annual age-standardised mortality rates broken down by ICD-10 cause chapter
-    for 28 countries from 2013 to 2023. Unlike the weekly all-cause data, these are
-    pre-computed annual ASMR values sourced from national and international cause-of-death
-    registries (see Sources below).
+    The <a href="causes.html">Causes of Death Explorer</a> displays annual age-standardised mortality rates 
+    broken down by ICD-10 cause chapter for 28 countries from 2013 onwards. 
+    Unlike the weekly all-cause data, these are annual ASMR values were caluculated using annual figuers with mid-year/ average populations.
+    Data sourced from <strong>Eurostat</strong> adn form additional national cause-of-death
+    registries (see Sources below). All countries' ASMRs were calculated with 5 year age bins (90+) apart
+    from New Zealand, with 85+ opene ended bin.
   </p>
   <p>
     Users may select any combination of countries, any age group, and one or more causes
@@ -405,7 +406,7 @@
     are non-zero throughout the training period — such as <em>(V01–Y89) External</em>
     — raises the summed total above zero for all training years, restoring the baseline.
     This ensures the trend is never fit on a series that is structurally zero in the
-    training window, which would produce a spurious and misleading projection.
+    training window, which would produce a spurious projection.
   </p>
 
   <div class="callout">
@@ -444,8 +445,14 @@
   <p>ONS — Deaths by sex, 5-year age group and underlying cause, England and Wales, 2022:<br>
     <a href="https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1050deathoccurrencesbysexfiveyearagegroupandunderlyingcauseicd10codeenglandandwales2022" target="_blank" rel="noopener">ONS ad hoc — 2022</a>
   </p>
+  <p>ONS — Analysis of population estimates tool for UK:<br>
+    <a href="https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/analysisofpopulationestimatestoolforuk" target="_blank" rel="noopener">ONS ad hoc — 2022</a>
+  </p>
   <p>Te Whatu Ora (Health New Zealand) — Mortality Data Web Tool:<br>
     <a href="https://www.tewhatuora.govt.nz/for-health-professionals/data-and-statistics/mortality/data-web-tool" target="_blank" rel="noopener">tewhatuora.govt.nz</a>
+  </p>
+  p>Stats NZ Infoshare:<br>
+    <a href="https://infoshare.stats.govt.nz/Default.aspx" target="_blank" rel="noopener">tewhatuora.govt.nz</a>
   </p>
 
   <footer>Mortality Explorer — methods</footer>
