@@ -111,11 +111,7 @@
 <div class="container">
 
   <header>
-    <a href="index.html">← Mortality Explorer</a>
-    <span style="color:var(--border);margin:0 8px">·</span>
-    <a href="causes.html">Causes of Death</a>
-    <span style="color:var(--border);margin:0 8px">·</span>
-    <a href="LE.html">Sub-National LE</a>
+    <a href="index.html">← Back to Explorer</a>
     <h1>Statistical <em>Methods</em></h1>
     <p class="subtitle">How baselines, confidence intervals and excess mortality are computed.</p>
   </header>
@@ -368,12 +364,63 @@
     Baselines with fewer than 5 training years are suppressed in the weekly (& annual) view.
   </p>
 
-  <!-- ── SUB-NATIONAL LIFE EXPECTANCY ─────────────────────────────────────── -->
+  <!-- ── CAUSES OF DEATH EXPLORER ─────────────────────────────────────────── -->
+  <h2>Causes of Death Explorer</h2>
+  <p>
+    The <a href="causes.html">Causes of Death Explorer</a> is a companion page that
+    displays annual age-standardised mortality rates broken down by ICD-10 cause chapter
+    for 28 countries from 2013 to 2023. Unlike the weekly all-cause data, these are
+    pre-computed annual ASMR values sourced from national and international cause-of-death
+    registries (see Sources below).
+  </p>
+  <p>
+    Users may select any combination of countries, any age group, and one or more causes
+    of death simultaneously. When multiple causes are selected, their rates are
+    <strong>summed</strong> for each country and year to produce a single composite series.
+  </p>
+
+  <h3>Baseline and confidence interval</h3>
+  <p>
+    The causes page applies the same <strong>annual OLS trend baseline</strong> described
+    above — a linear regression of the annual ASMR sum against year, fit over the chosen
+    training window (2013–19, 2014–19, or 2015–19), with the same full
+    prediction interval formula including the leverage penalty:
+  </p>
+  <div class="formula">
+    CI = baseline ± t(n−2) · SE · √(1 + 1/n + (year − year̄)² / Sxx)
+  </div>
+  <p>
+    Here the regression input is already an annual rate, so no weekly summation or
+    52-week normalisation is required. The projected baseline and widening CI band
+    behave identically to the Annual view on the main explorer.
+  </p>
+
+  <h3>Baseline suppression</h3>
+  <p>
+    The baseline and CI are suppressed for a given country when the
+    <strong>summed</strong> ASMR across selected causes is zero or missing for any
+    year within the training window. For example, selecting only
+    <em>(U071) Covid-19 identified</em> produces a zero sum for every pre-2020 training
+    year, so no trend can be meaningfully fitted. Adding a second cause whose values
+    are non-zero throughout the training period — such as <em>(V01–Y89) External</em>
+    — raises the summed total above zero for all training years, restoring the baseline.
+    This ensures the trend is never fit on a series that is structurally zero in the
+    training window, which would produce a spurious and misleading projection.
+  </p>
+
+  <div class="callout">
+    <strong>Note.</strong> Cause-of-death coding practices and completeness vary across
+    countries and years. Cross-country comparisons should be interpreted with caution,
+    particularly for causes that are sensitive to coding conventions (e.g. dementia,
+    ill-defined causes, Covid-19 identification vs. attribution).
+  </div>
+   
+    <!-- ── SUB-NATIONAL LIFE EXPECTANCY ─────────────────────────────────────── -->
   <h2>Sub-National Life Expectancy Explorer</h2>
   <p>
     The <a href="LE.html">Sub-National Life Expectancy Explorer</a> displays annual
-    life expectancy at NUTS2 regional level for up to 252 regions across 33 European
-    countries, sourced from Eurostat. Three measures are available — life expectancy
+    life expectancy losses or gains in months at NUTS2 regional level for up to 252 regions across 33 European
+    countries, sourced from <strong>Eurostat</strong>. Three measures are available — life expectancy
     at birth, at age 65, and at age 80 — broken down by sex.
   </p>
   <p>
