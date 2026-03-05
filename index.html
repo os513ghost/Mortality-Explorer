@@ -60,8 +60,10 @@
   .controls {
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
     padding: 14px 16px; margin-bottom: 14px;
-    display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; flex-shrink: 0;
+    display: flex; flex-direction: column; gap: 12px; flex-shrink: 0;
   }
+  .controls-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .controls-divider { border: none; border-top: 1px solid var(--border); margin: 0; }
   .control-group { display: flex; flex-direction: column; gap: 5px; }
   .control-group.countries { flex: 1; min-width: 0; }
   label { font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
@@ -138,49 +140,43 @@
 
   /* ── Phone (≤600px) ──────────────────────────────────────────────────── */
   @media (max-width: 600px) {
-    /* Container */
     .container { padding: 0 10px; }
 
-    /* Header */
     header { padding: 12px 0 10px; margin-bottom: 10px; }
-    .title-block h1 { font-size: 1.25rem; }
-    .title-block p { font-size: 0.68rem; line-height: 1.5; }
+    .title-block h1 { font-size: 1.1rem; }
+    .title-block p { font-size: 0.67rem; line-height: 1.55; }
 
-    /* Controls panel: stack everything full-width */
-    .controls {
-      padding: 10px 10px; gap: 10px;
-      flex-direction: column; align-items: stretch;
-    }
+    /* Controls: rows stack vertically, groups go full width */
+    .controls { padding: 10px; gap: 10px; }
+    .controls-row { flex-direction: column; gap: 10px; }
     .control-group { width: 100%; }
-    .control-group.countries { width: 100%; flex: none; }
+    .control-group.countries { flex: none; width: 100%; }
 
-    /* Country chips: slightly larger touch targets */
-    .country-chip { font-size: 0.68rem; padding: 5px 10px; }
+    /* Chips: larger touch targets */
+    .country-chip { font-size: 0.7rem; padding: 6px 11px; }
 
-    /* Tab buttons: wrap and fill width naturally */
+    /* Tab buttons: fill row evenly */
     .tab-group { gap: 4px; }
     .tab-btn, .toggle-btn {
-      font-size: 0.66rem; padding: 6px 10px;
+      font-size: 0.66rem; padding: 7px 8px;
       flex: 1; text-align: center; min-width: 0;
     }
+    /* Baseline window: horizontal scroll on phone */
+    #baseline-tabs { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-    /* Select: full width */
     select { width: 100%; font-size: 0.85rem; padding: 8px 28px 8px 10px; }
 
-    /* Year slider: full width */
     .year-slider-group { max-width: 100%; min-width: 0; width: 100%; }
     input[type="range"] { min-width: 0; }
 
-    /* Chart */
-    .chart-wrap { min-height: 340px; padding: 12px 8px 8px; margin-bottom: 4px; }
-    .chart-canvas-wrap { min-height: 280px; }
+    .chart-wrap { min-height: 320px; padding: 12px 8px 8px; margin-bottom: 4px; }
+    .chart-canvas-wrap { min-height: 260px; }
     .chart-header { gap: 6px; }
-    .chart-title { font-size: 0.9rem; }
-    .chart-subtitle { font-size: 0.65rem; }
+    .chart-title { font-size: 0.88rem; }
+    .chart-subtitle { font-size: 0.64rem; }
     .legend { gap: 6px; }
-    .legend-item { font-size: 0.65rem; }
+    .legend-item { font-size: 0.64rem; }
 
-    /* Disclaimer + footer */
     .disclaimer { font-size: 0.6rem; }
     footer { font-size: 0.65rem; padding: 10px; }
   }
@@ -197,7 +193,7 @@
           <span class="sep">·</span>
           By <a href="https://x.com/OS51388957" target="_blank" rel="noopener">@OS51388957</a>
           <span class="sep">·</span>
-          <a href="https://public.tableau.com/app/profile/os8749/viz/Europe-CausesofdeathASMRsbyage2013-2021/Causes_of_Death" target="_blank" rel="noopener">Causes of Death Tool</a>
+          <a href="causes.html">Causes of Death Tool</a>
           <span class="sep">·</span>
           <a href="https://public.tableau.com/app/profile/os8749/viz/Age-StandardisedExcessforanyrangeofdatesVS2012-19trends/Dashboard1" target="_blank" rel="noopener">Sub-National ASMR and excess map tool</a>
         </p>
@@ -219,51 +215,56 @@
 
   <div id="app">
     <div class="controls">
-      <div class="control-group countries">
-        <label>Countries</label>
-        <div class="country-multi" id="country-chips"></div>
-      </div>
-      <div class="control-group">
-        <label>Age Group</label>
-        <select id="age-select">
-          <option value="all ages">All Ages</option>
-          <option value="15-44">15–44</option>
-          <option value="45-64">45–64</option>
-          <option value="65+">65+</option>
-        </select>
-      </div>
-      <div class="control-group">
-        <label>View</label>
-        <div class="tab-group">
-          <div class="tab-btn active-gold" id="view-weekly"   onclick="setView('weekly')">Weekly</div>
-          <div class="tab-btn"             id="view-annual"   onclick="setView('annual')">Annual</div>
-          <div class="tab-btn"             id="view-seasonal" onclick="setView('seasonal')">Seasonal</div>
+      <div class="controls-row">
+        <div class="control-group countries">
+          <label>Countries</label>
+          <div class="country-multi" id="country-chips"></div>
         </div>
       </div>
-      <div class="control-group">
-        <label>Baseline Type</label>
-        <div class="tab-group">
-          <div class="tab-btn active" id="bltype-trend"   onclick="setBlType('trend')">Trend</div>
-          <div class="tab-btn"        id="bltype-loglin" onclick="setBlType('loglin')">Log-linear</div>
-          <div class="tab-btn"        id="bltype-mean"   onclick="setBlType('mean')">Mean</div>
+      <hr class="controls-divider">
+      <div class="controls-row">
+        <div class="control-group">
+          <label>Age Group</label>
+          <select id="age-select">
+            <option value="all ages">All Ages</option>
+            <option value="15-44">15–44</option>
+            <option value="45-64">45–64</option>
+            <option value="65+">65+</option>
+          </select>
         </div>
-      </div>
-      <div class="control-group">
-        <label>Baseline Window</label>
-        <div class="tab-group" id="baseline-tabs" style="flex-wrap:nowrap;overflow-x:auto;"></div>
-      </div>
-      <div class="control-group">
-        <label>Display</label>
-        <div class="tab-group">
-          <div class="toggle-btn on" id="toggle-ci"       onclick="toggleOpt('ci')">CI Band</div>
-          <div class="toggle-btn on" id="toggle-baseline" onclick="toggleOpt('baseline')">Baseline</div>
+        <div class="control-group">
+          <label>View</label>
+          <div class="tab-group">
+            <div class="tab-btn active-gold" id="view-weekly"   onclick="setView('weekly')">Weekly</div>
+            <div class="tab-btn"             id="view-annual"   onclick="setView('annual')">Annual</div>
+            <div class="tab-btn"             id="view-seasonal" onclick="setView('seasonal')">Seasonal</div>
+          </div>
         </div>
-      </div>
-      <div class="control-group year-slider-group">
-        <label id="start-label">Start Year</label>
-        <div class="year-slider-row">
-          <span class="year-val" id="yr-s-lbl">2009</span>
-          <input type="range" id="yr-start" min="2009" max="2024" value="2009" step="1" oninput="onYearRange()">
+        <div class="control-group">
+          <label>Baseline Type</label>
+          <div class="tab-group">
+            <div class="tab-btn active" id="bltype-trend"   onclick="setBlType('trend')">Trend</div>
+            <div class="tab-btn"        id="bltype-loglin" onclick="setBlType('loglin')">Log-linear</div>
+            <div class="tab-btn"        id="bltype-mean"   onclick="setBlType('mean')">Mean</div>
+          </div>
+        </div>
+        <div class="control-group">
+          <label>Baseline Window</label>
+          <div class="tab-group" id="baseline-tabs" style="flex-wrap:nowrap;overflow-x:auto;"></div>
+        </div>
+        <div class="control-group">
+          <label>Display</label>
+          <div class="tab-group">
+            <div class="toggle-btn on" id="toggle-ci"       onclick="toggleOpt('ci')">CI Band</div>
+            <div class="toggle-btn on" id="toggle-baseline" onclick="toggleOpt('baseline')">Baseline</div>
+          </div>
+        </div>
+        <div class="control-group year-slider-group">
+          <label id="start-label">Start Year</label>
+          <div class="year-slider-row">
+            <span class="year-val" id="yr-s-lbl">2009</span>
+            <input type="range" id="yr-start" min="2009" max="2024" value="2009" step="1" oninput="onYearRange()">
+          </div>
         </div>
       </div>
     </div>
@@ -286,7 +287,7 @@
     <p class="disclaimer">
       All 2025 data are preliminary or incomplete. W99 = unknown week of death, included for Sweden.
       ESP13, 5-year age bins (90+), weekly interpolated populations.
-      Israel: 0–19 age group. Germany: 10-year bins &lt;40 (20–44 observations used). Additional information in methods page.
+      Israel: 0–19 age group. Germany: 10-year bins &lt;40 (20–44 observations used).
     </p>
   </div>
 </div>

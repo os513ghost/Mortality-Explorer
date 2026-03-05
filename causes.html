@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Causes of Death Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14; --surface: #151820; --surface2: #1c2030; --border: #252a3a;
+    --text: #e8eaf0; --text-dim: #6b7280; --text-mid: #9ca3af;
+    --accent: #e8c97a; --accent2: #7a9ee8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-weight: 300;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(122,158,232,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(122,158,232,0.03) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .container {
+    position: relative; z-index: 1; max-width: 1600px; width: 100%;
+    margin: 0 auto; padding: 0 16px; display: flex; flex-direction: column; flex: 1;
+  }
+  header { padding: 20px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-shrink: 0; }
+  .header-inner { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .title-block h1 { font-family: 'DM Serif Display', serif; font-size: clamp(1.2rem,3vw,2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; }
+  .title-block h1 em { font-style: italic; color: var(--accent); }
+  .title-block p { margin-top: 4px; color: var(--text-dim); font-size: 0.78rem; line-height: 1.6; }
+  .title-block p a { color: var(--accent2); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.15s; }
+  .title-block p a:hover { border-bottom-color: var(--accent2); }
+  .title-block p .sep { color: var(--border); margin: 0 6px; }
+
+  #loading { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 14px; }
+  .spinner { width: 36px; height: 36px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .load-text { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text-dim); letter-spacing: 0.1em; }
+
+  #upload-prompt { display: none; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; }
+  .upload-box { border: 2px dashed var(--border); border-radius: 12px; padding: 36px 48px; cursor: pointer; transition: all 0.2s; max-width: 440px; width: 100%; text-align: center; }
+  .upload-box:hover { border-color: var(--accent); background: rgba(232,201,122,0.04); }
+  .upload-box h3 { font-family: 'DM Serif Display', serif; font-size: 1.1rem; font-weight: 400; margin: 10px 0 6px; }
+  .upload-box p { font-size: 0.75rem; color: var(--text-dim); }
+  #file-input { display: none; }
+
+  #app { display: none; flex-direction: column; flex: 1; }
+
+  .controls {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 10px;
+    display: flex; flex-direction: column; gap: 12px; flex-shrink: 0;
+  }
+  .controls-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .controls-divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+  .control-group { display: flex; flex-direction: column; gap: 5px; }
+  .control-group.flex-grow { flex: 1; min-width: 180px; }
+
+  label { font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
+
+  select {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-size: 0.82rem; border-radius: 6px;
+    padding: 6px 28px 6px 9px; outline: none; transition: border-color 0.2s; cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+  }
+  select:hover { border-color: var(--accent); }
+
+  .chip-wrap { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip-wrap.scrollable { max-height: 80px; overflow-y: auto; }
+  .chip-wrap.scrollable::-webkit-scrollbar { width: 4px; }
+  .chip-wrap.scrollable::-webkit-scrollbar-track { background: transparent; }
+  .chip-wrap.scrollable::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .chip {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem; padding: 3px 8px;
+    border-radius: 20px; border: 1px solid var(--border); cursor: pointer;
+    transition: all 0.15s; color: var(--text-mid); background: var(--surface2);
+    white-space: nowrap; user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  .chip.active-cause { border-color: var(--accent); color: var(--accent); background: rgba(232,201,122,0.1); }
+
+  .tab-group { display: flex; gap: 3px; flex-wrap: wrap; }
+  .tab-btn {
+    font-family: 'DM Mono', monospace; font-size: 0.63rem; padding: 4px 8px;
+    border-radius: 5px; border: 1px solid var(--border); cursor: pointer;
+    transition: all 0.15s; color: var(--text-dim); background: var(--surface2); touch-action: manipulation;
+  }
+  .tab-btn.active { border-color: var(--accent2); color: var(--accent2); background: rgba(122,158,232,0.1); }
+  .toggle-btn {
+    font-family: 'DM Mono', monospace; font-size: 0.63rem; padding: 4px 9px;
+    border-radius: 5px; border: 1px solid var(--border); cursor: pointer;
+    transition: all 0.15s; color: var(--text-dim); background: var(--surface2); touch-action: manipulation;
+  }
+  .toggle-btn.on { border-color: var(--accent2); color: var(--accent2); background: rgba(122,158,232,0.1); }
+
+  .chart-wrap {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 16px 12px; flex: 1; display: flex; flex-direction: column;
+    min-height: 500px; margin-bottom: 6px;
+  }
+  .chart-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+  .chart-title { font-family: 'DM Serif Display', serif; font-size: 1rem; font-weight: 400; }
+  .chart-subtitle { font-size: 0.72rem; color: var(--text-dim); margin-top: 2px; }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; max-width: 700px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.68rem; color: var(--text-mid); }
+  .legend-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .legend-line { width: 16px; height: 2px; border-radius: 1px; }
+  .legend-dash { width: 16px; height: 2px; background: repeating-linear-gradient(90deg, var(--accent2) 0 4px, transparent 4px 7px); }
+  .legend-band { width: 16px; height: 8px; border-radius: 2px; opacity: 0.4; }
+  .chart-canvas-wrap { flex: 1; position: relative; min-height: 400px; }
+  .chart-canvas-wrap canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+
+  .empty-state {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim); font-family: 'DM Mono', monospace; font-size: 0.75rem;
+    letter-spacing: 0.05em; text-align: center; padding: 20px;
+  }
+
+  .disclaimer { font-size: 0.62rem; color: var(--text-dim); line-height: 1.5; padding: 6px 2px 14px; flex-shrink: 0; }
+
+  footer { text-align: center; padding: 14px; color: var(--text-dim); font-size: 0.7rem; border-top: 1px solid var(--border); flex-shrink: 0; position: relative; z-index: 1; }
+
+  /* ── Tablet ───────────────────────────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .chart-wrap { min-height: 420px; }
+    .chart-canvas-wrap { min-height: 340px; }
+  }
+
+  /* ── Phone ────────────────────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    .container { padding: 0 10px; }
+    header { padding: 12px 0 10px; margin-bottom: 10px; }
+    .title-block h1 { font-size: 1.1rem; }
+    .title-block p { font-size: 0.67rem; line-height: 1.55; }
+
+    .controls { padding: 10px; gap: 10px; margin-bottom: 8px; }
+    .controls-row { flex-direction: column; gap: 10px; }
+    .control-group { width: 100%; }
+    .control-group.flex-grow { min-width: 0; width: 100%; flex: none; }
+
+    .chip { font-size: 0.7rem; padding: 6px 11px; }
+
+    .tab-group { gap: 4px; }
+    .tab-btn, .toggle-btn { font-size: 0.66rem; padding: 7px 8px; flex: 1; text-align: center; min-width: 0; }
+
+    select { width: 100%; font-size: 0.85rem; padding: 8px 28px 8px 10px; }
+
+    .chart-wrap { min-height: 320px; padding: 12px 8px 8px; margin-bottom: 4px; }
+    .chart-canvas-wrap { min-height: 260px; }
+    .chart-header { gap: 6px; }
+    .chart-title { font-size: 0.88rem; }
+    .chart-subtitle { font-size: 0.64rem; }
+    .legend { gap: 6px; max-width: 100%; }
+    .legend-item { font-size: 0.64rem; }
+
+    .disclaimer { font-size: 0.6rem; }
+    footer { font-size: 0.65rem; padding: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="header-inner">
+      <div class="title-block">
+        <h1><em>Causes of Death</em> Explorer</h1>
+        <p>
+          Age-standardised mortality rates · Annual data · 28 countries · 2013–2023
+          <span class="sep">·</span>
+          By <a href="https://x.com/OS51388957" target="_blank" rel="noopener">@OS51388957</a>
+          <span class="sep">·</span>
+          <a href="index.html">Mortality Explorer</a>
+          <span class="sep">·</span>
+          <a href="https://public.tableau.com/app/profile/os8749/viz/Age-StandardisedExcessforanyrangeofdatesVS2012-19trends/Dashboard1" target="_blank" rel="noopener">Sub-National ASMR and excess map tool</a>
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <div id="loading"><div class="spinner"></div><div class="load-text">Loading…</div></div>
+
+  <div id="upload-prompt">
+    <div class="upload-box" onclick="document.getElementById('file-input').click()">
+      <div style="font-size:2rem">📂</div>
+      <h3>Load causes of death data</h3>
+      <p>Select <strong>Live_Causes_by_age.csv</strong> or any compatible CSV</p>
+    </div>
+    <input type="file" id="file-input" accept=".csv" onchange="handleFileUpload(event)">
+    <p style="font-size:0.72rem;color:var(--text-dim);margin-top:8px;text-align:center;">Place CSV next to <code>causes.html</code> for auto-load on GitHub Pages</p>
+  </div>
+
+  <div id="app">
+
+    <!-- Panel 1: Countries + Causes -->
+    <div class="controls">
+      <div class="controls-row">
+        <div class="control-group flex-grow">
+          <label>Countries</label>
+          <div class="chip-wrap scrollable" id="country-chips"></div>
+        </div>
+      </div>
+      <hr class="controls-divider">
+      <div class="controls-row">
+        <div class="control-group flex-grow">
+          <label>Causes of Death <span id="cause-count-label" style="color:var(--accent);margin-left:4px;"></span></label>
+          <div class="chip-wrap" id="cause-chips"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 2: Age + Baseline window + Display toggles -->
+    <div class="controls">
+      <div class="controls-row">
+        <div class="control-group">
+          <label>Age Group</label>
+          <select id="age-select">
+            <option value="all ages">All Ages</option>
+            <option value="15-44">15–44</option>
+            <option value="45-64">45–64</option>
+            <option value="65+">65+</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label>Baseline Window</label>
+          <div class="tab-group" id="baseline-tabs"></div>
+        </div>
+        <div class="control-group">
+          <label>Display</label>
+          <div class="tab-group">
+            <div class="toggle-btn on" id="toggle-ci"       onclick="toggleOpt('ci')">CI Band</div>
+            <div class="toggle-btn on" id="toggle-baseline" onclick="toggleOpt('baseline')">Baseline</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-wrap">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title" id="chart-title">Causes of Death Over Time</div>
+          <div class="chart-subtitle" id="chart-sub">Age-standardised mortality rate per 100,000 · Annual</div>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-line" style="background:var(--accent)"></div><span>Observed</span></div>
+          <div class="legend-item"><div class="legend-dash"></div><span>Baseline</span></div>
+          <div class="legend-item"><div class="legend-band" style="background:var(--accent2)"></div><span>95% CI</span></div>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="main-chart" style="display:none;"></canvas>
+        <div class="empty-state" id="empty-state">Select at least one country and one cause of death</div>
+      </div>
+    </div>
+
+    <p class="disclaimer">
+      ASMR computed using ESP2013 standard. Causes coded to ICD-10 chapters. 2023 data may be preliminary for some countries.
+      Selecting multiple causes sums their rates. Linear trend baseline (OLS) fitted over the selected training window (end year always 2019).
+      Baseline and CI are suppressed for a country when any selected cause has zero or missing values within the training period.
+    </p>
+  </div>
+</div>
+<footer>
+  Causes of Death Explorer
+  <span style="margin:0 10px;color:var(--border)">·</span>
+  <a href="index.html" style="color:var(--accent2);text-decoration:none;border-bottom:1px solid transparent;transition:border-color 0.15s" onmouseover="this.style.borderBottomColor='var(--accent2)'" onmouseout="this.style.borderBottomColor='transparent'">Mortality Explorer</a>
+</footer>
+
+<script>
+const COLORS = ['#e8c97a','#7a9ee8','#e87a7a','#7ae8b0','#c77ae8','#e8a07a','#7ae8e8','#e8e87a','#a8e87a','#e87ac0','#7ac0e8','#e8c77a','#9ae87a','#e87aaa','#7ab0e8','#e8d07a','#7ae8c0','#e89a7a','#87e87a','#e87ab0','#7aaae8','#e8e07a','#70e87a','#e87ab8','#7aa8e8','#e8c47a','#7ae890','#e8a87a'];
+
+const BASELINES = [
+  { key: 'bl_2013_19', label: '2013–19', blStart: 2013, blEnd: 2019 },
+  { key: 'bl_2014_19', label: '2014–19', blStart: 2014, blEnd: 2019 },
+  { key: 'bl_2015_19', label: '2015–19', blStart: 2015, blEnd: 2019 },
+];
+
+let allData     = [];
+let COUNTRIES   = [];
+let CAUSES      = [];
+let YEARS       = [];
+
+let selCountries = new Set();
+let selCauses    = new Set();
+let selAge       = 'all ages';
+let selBaseline  = 'bl_2013_19';
+let showCI       = true;
+let showBaseline = true;
+let chart        = null;
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+
+async function tryAutoLoad() {
+  const candidates = ['Live_Causes_by_age.csv', 'live_causes_by_age.csv'];
+  for (const filename of candidates) {
+    try {
+      const r = await fetch(filename + '?v=' + Date.now(), { cache: 'no-cache' });
+      if (!r.ok) continue;
+      const text = await r.text();
+      if (!text || text.trim().length < 10) continue;
+      parseCSV(text);
+      return;
+    } catch {}
+  }
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('upload-prompt').style.display = 'flex';
+}
+
+function handleFileUpload(e) {
+  const f = e.target.files[0]; if (!f) return;
+  document.getElementById('upload-prompt').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  const reader = new FileReader();
+  reader.onload = ev => parseCSV(ev.target.result);
+  reader.readAsText(f, 'latin1');
+}
+
+function parseCSV(text) {
+  Papa.parse(text, {
+    header: true, skipEmptyLines: true, dynamicTyping: false,
+    complete: res => {
+      allData = res.data.map(r => ({
+        country: (r['Country'] || '').trim(),
+        year:    parseInt(r['year'], 10),
+        asmr:    parseFloat(r['ASMR_per_100k']),
+        age:     (r['age'] || '').trim(),
+        cause:   (r['Cause of death'] || '').trim().replace(/\u00a0/g, '').trim()
+      })).filter(r => r.country && !isNaN(r.year) && !isNaN(r.asmr));
+
+      const countrySet = new Set(), causeSet = new Set(), yearSet = new Set();
+      allData.forEach(r => { countrySet.add(r.country); causeSet.add(r.cause); yearSet.add(r.year); });
+      COUNTRIES = Array.from(countrySet).sort();
+      CAUSES    = Array.from(causeSet).sort();
+      YEARS     = Array.from(yearSet).sort((a, b) => a - b);
+
+      const defaultCountries = ['Sweden', 'Hungary'].filter(c => COUNTRIES.includes(c));
+      selCountries = new Set(defaultCountries.length ? defaultCountries : [COUNTRIES[0]]);
+      selCauses = new Set(['(I) Circulatory system', '(C) Malignant Neoplasms'].filter(c => CAUSES.includes(c)));
+      if (selCauses.size === 0 && CAUSES.length) selCauses.add(CAUSES[0]);
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      buildCountryChips();
+      buildCauseChips();
+      buildBaselineTabs();
+      buildChart();
+    }
+  });
+}
+
+// ── Math ──────────────────────────────────────────────────────────────────────
+
+function tCritical95(df) {
+  if (df <= 0) return 12.706;
+  const table = [12.706,4.303,3.182,2.776,2.571,2.447,2.365,2.306,2.262,2.228];
+  if (df <= 10) return table[df - 1];
+  if (df <= 15) return 2.131;
+  if (df <= 20) return 2.086;
+  if (df <= 30) return 2.042;
+  return 1.960;
+}
+
+function linearRegression(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return null;
+  const xMean = xs.reduce((s,v) => s+v, 0) / n;
+  const yMean = ys.reduce((s,v) => s+v, 0) / n;
+  const Sxx = xs.reduce((s,v) => s + (v-xMean)**2, 0);
+  const Sxy = xs.reduce((s,v,i) => s + (v-xMean)*(ys[i]-yMean), 0);
+  const slope = Sxy / Sxx;
+  const intercept = yMean - slope * xMean;
+  const SSres = xs.reduce((s,v,i) => s + (ys[i] - (slope*v+intercept))**2, 0);
+  const residualSE = Math.sqrt(SSres / Math.max(n-2, 1));
+  return { slope, intercept, residualSE, xMean, Sxx, n, tCrit: tCritical95(n-2) };
+}
+
+function predInterval(reg, x) {
+  const pred = reg.slope * x + reg.intercept;
+  const hw   = reg.residualSE * reg.tCrit * Math.sqrt(1 + 1/reg.n + (x-reg.xMean)**2 / reg.Sxx);
+  return { mean: pred, lo: pred - hw, hi: pred + hw };
+}
+
+// ── Chips ─────────────────────────────────────────────────────────────────────
+
+function buildCountryChips() {
+  const el = document.getElementById('country-chips');
+  el.innerHTML = '';
+  COUNTRIES.forEach((c, i) => {
+    const col  = COLORS[i % COLORS.length];
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (selCountries.has(c) ? ' active' : '');
+    chip.textContent = c;
+    if (selCountries.has(c)) applyCountryChipStyle(chip, col);
+    chip.onclick = () => {
+      if (selCountries.has(c)) {
+        if (selCountries.size === 1) return;
+        selCountries.delete(c);
+        chip.classList.remove('active');
+        chip.style.borderColor = chip.style.color = chip.style.background = '';
+      } else {
+        selCountries.add(c);
+        chip.classList.add('active');
+        applyCountryChipStyle(chip, col);
+      }
+      buildChart();
+    };
+    el.appendChild(chip);
+  });
+}
+
+function applyCountryChipStyle(chip, col) {
+  chip.style.borderColor = col;
+  chip.style.color = col;
+  chip.style.background = col + '1a';
+}
+
+function buildCauseChips() {
+  const el = document.getElementById('cause-chips');
+  el.innerHTML = '';
+  CAUSES.forEach(c => {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (selCauses.has(c) ? ' active-cause' : '');
+    chip.textContent = c;
+    chip.onclick = () => {
+      if (selCauses.has(c)) { selCauses.delete(c); chip.classList.remove('active-cause'); }
+      else                  { selCauses.add(c);    chip.classList.add('active-cause');    }
+      updateCauseCountLabel();
+      buildChart();
+    };
+    el.appendChild(chip);
+  });
+  updateCauseCountLabel();
+}
+
+function updateCauseCountLabel() {
+  const lbl = document.getElementById('cause-count-label');
+  lbl.textContent = selCauses.size > 1 ? `(${selCauses.size} summed)` : selCauses.size === 1 ? '(1 selected)' : '(none)';
+}
+
+// ── Baseline tabs ─────────────────────────────────────────────────────────────
+
+function buildBaselineTabs() {
+  const el = document.getElementById('baseline-tabs');
+  el.innerHTML = '';
+  BASELINES.forEach(def => {
+    const btn = document.createElement('div');
+    btn.className = 'tab-btn' + (def.key === selBaseline ? ' active' : '');
+    btn.textContent = def.label;
+    btn.onclick = () => { selBaseline = def.key; buildBaselineTabs(); buildChart(); };
+    el.appendChild(btn);
+  });
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+
+document.getElementById('age-select').addEventListener('change', e => { selAge = e.target.value; buildChart(); });
+
+function toggleOpt(k) {
+  if (k === 'ci')       showCI       = !showCI;
+  if (k === 'baseline') showBaseline = !showBaseline;
+  document.getElementById('toggle-' + k).classList.toggle('on', k === 'ci' ? showCI : showBaseline);
+  buildChart();
+}
+
+// ── Data ──────────────────────────────────────────────────────────────────────
+
+function getCountryColor(country) { return COLORS[COUNTRIES.indexOf(country) % COLORS.length]; }
+
+// Build observed year→value map for a country.
+// Sum ALL selected causes for each year (including zeros/missing = 0).
+// The year is always present in the result as long as the data row exists.
+// A year whose summed total is zero will be stored as 0 (not null), so the
+// observed line can still plot it — but canUseBaseline will reject it.
+function buildObsMap(country) {
+  // First pass: find which years have at least one data row for this country/age
+  const yearsSeen = new Set();
+  allData.forEach(r => {
+    if (r.country === country && r.age === selAge && selCauses.has(r.cause)) {
+      yearsSeen.add(r.year);
+    }
+  });
+
+  // Second pass: sum across selected causes (treat missing rows as 0)
+  const totals = {};
+  yearsSeen.forEach(yr => { totals[yr] = 0; });
+
+  allData.forEach(r => {
+    if (r.country !== country || r.age !== selAge || !selCauses.has(r.cause)) return;
+    totals[r.year] = (totals[r.year] || 0) + r.asmr;
+  });
+
+  // Return map: year -> summed value (null if no rows at all for that year)
+  const result = {};
+  YEARS.forEach(yr => {
+    if (yearsSeen.has(yr)) result[yr] = +totals[yr].toFixed(4);
+    // years with no rows at all remain absent (undefined/null)
+  });
+  return result;
+}
+
+// A country can use a baseline only if every year in the training window
+// has a summed value that is strictly greater than zero.
+// This means: Covid-only selection (all zeros before 2020) → no baseline.
+// Covid + External → summed total > 0 for every training year → baseline shown.
+function canUseBaseline(obsMap) {
+  const def = BASELINES.find(d => d.key === selBaseline);
+  if (!def) return false;
+  for (let yr = def.blStart; yr <= def.blEnd; yr++) {
+    if (obsMap[yr] == null || obsMap[yr] <= 0) return false;
+  }
+  return true;
+}
+
+function buildCountrySeries(country) {
+  const def    = BASELINES.find(d => d.key === selBaseline);
+  const obsMap = buildObsMap(country);
+  const eligible = canUseBaseline(obsMap);
+
+  let reg = null;
+  if (eligible) {
+    const trainX = [], trainY = [];
+    for (let yr = def.blStart; yr <= def.blEnd; yr++) {
+      if (obsMap[yr] != null) { trainX.push(yr); trainY.push(obsMap[yr]); }
+    }
+    reg = linearRegression(trainX, trainY);
+  }
+
+  const obs = [], bm = [], bl = [], bh = [];
+  YEARS.forEach(yr => {
+    obs.push(obsMap[yr] ?? null);
+    if (reg) {
+      const p = predInterval(reg, yr);
+      bm.push(+p.mean.toFixed(4));
+      bl.push(+p.lo.toFixed(4));
+      bh.push(+p.hi.toFixed(4));
+    } else {
+      bm.push(null); bl.push(null); bh.push(null);
+    }
+  });
+
+  return { obs, bm, bl, bh, canBL: eligible };
+}
+
+// ── Chart ─────────────────────────────────────────────────────────────────────
+
+function buildChart() {
+  const canvas     = document.getElementById('main-chart');
+  const emptyState = document.getElementById('empty-state');
+
+  if (selCountries.size === 0 || selCauses.size === 0) {
+    canvas.style.display = 'none';
+    emptyState.style.display = 'flex';
+    if (chart) { chart.destroy(); chart = null; }
+    return;
+  }
+
+  canvas.style.display = 'block';
+  emptyState.style.display = 'none';
+
+  const labels   = YEARS.map(String);
+  const datasets = [];
+  const countries = Array.from(selCountries);
+
+  countries.forEach(country => {
+    const col = getCountryColor(country);
+    const s   = buildCountrySeries(country);
+
+    if (s.canBL) {
+      // CI band — always included in datasets so tooltip can read lo/hi,
+      // but made invisible when showCI is off
+      datasets.push({
+        label: country + ' CI Upper', data: s.bh,
+        borderColor: 'transparent',
+        backgroundColor: showCI ? col + '22' : 'transparent',
+        fill: '+1', pointRadius: 0, tension: 0.3, order: 10
+      });
+      datasets.push({
+        label: country + ' CI Lower', data: s.bl,
+        borderColor: 'transparent', backgroundColor: 'transparent',
+        fill: false, pointRadius: 0, tension: 0.3, order: 10
+      });
+
+      // Baseline trend line
+      datasets.push({
+        label: country + ' Baseline', data: s.bm,
+        borderColor: showBaseline ? col + '88' : 'transparent',
+        borderWidth: 1.5, borderDash: [4, 3],
+        pointRadius: showBaseline ? 4 : 0,
+        pointBackgroundColor: col + '88',
+        tension: 0.3, fill: false, order: 5
+      });
+    }
+
+    // Observed line (always on top)
+    datasets.push({
+      label: country, data: s.obs,
+      borderColor: col, borderWidth: 2,
+      pointRadius: 5, pointHoverRadius: 7,
+      pointBackgroundColor: col,
+      tension: 0.3, fill: false, order: 1
+    });
+  });
+
+  const def      = BASELINES.find(d => d.key === selBaseline);
+  const ageLabel = selAge === 'all ages' ? 'All Ages' : 'Age ' + selAge;
+  const causeLabel = selCauses.size === 1
+    ? Array.from(selCauses)[0]
+    : selCauses.size + ' causes (summed)';
+
+  document.getElementById('chart-title').textContent =
+    countries.length > 1
+      ? ageLabel + ' · ' + causeLabel
+      : countries[0] + ' · ' + ageLabel + ' · ' + causeLabel;
+  document.getElementById('chart-sub').textContent =
+    'ASMR per 100,000 · Annual · ' + ageLabel + ' · Trend baseline ' + def.label;
+
+  const ctx = canvas.getContext('2d');
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1c2030',
+          borderColor: '#252a3a',
+          borderWidth: 1,
+          titleColor: '#9ca3af',
+          bodyColor: '#e8eaf0',
+          titleFont: { family: 'DM Mono', size: 10 },
+          bodyFont: { family: 'DM Mono', size: 10 },
+          padding: 10,
+          callbacks: {
+            title: items => items[0]?.label ?? '',
+            label: () => null,
+            afterBody(items) {
+              if (!items.length) return [];
+              const idx = items[0].dataIndex;
+              const dsMap = {};
+              items[0].chart.data.datasets.forEach(ds => { dsMap[ds.label] = ds.data; });
+
+              const lines = [];
+              countries.forEach(country => {
+                const obs = dsMap[country]?.[idx];
+                const bm  = dsMap[country + ' Baseline']?.[idx];
+                const lo  = dsMap[country + ' CI Lower']?.[idx];
+                const hi  = dsMap[country + ' CI Upper']?.[idx];
+
+                if (obs == null) return;
+
+                if (bm == null) {
+                  lines.push(` ${country}  ${obs.toFixed(2)}`);
+                } else {
+                  const excess = obs - bm;
+                  const sign   = excess >= 0 ? '+' : '';
+                  if (lo != null && hi != null) {
+                    const exLo = obs - hi;
+                    const exHi = obs - lo;
+                    lines.push(
+                      ` ${country}  ${obs.toFixed(2)}`,
+                      `  Excess: ${sign}${excess.toFixed(2)} [${exLo.toFixed(2)}, ${exHi.toFixed(2)}]`
+                    );
+                  } else {
+                    lines.push(` ${country}  ${obs.toFixed(2)}`, `  Excess: ${sign}${excess.toFixed(2)}`);
+                  }
+                }
+                if (countries.length > 1) lines.push('');
+              });
+
+              while (lines.length && lines[lines.length - 1] === '') lines.pop();
+              return lines;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxRotation: 45, autoSkip: true, autoSkipPadding: 12 },
+          grid: { color: 'rgba(37,42,58,0.6)', drawTicks: false },
+          border: { color: '#252a3a' }
+        },
+        y: {
+          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 8, callback: v => v?.toFixed(1) },
+          grid: { color: 'rgba(37,42,58,0.6)', drawTicks: false },
+          border: { color: '#252a3a' },
+          title: { display: true, text: 'Deaths / 100k', color: '#6b7280', font: { family: 'DM Mono', size: 10 } }
+        }
+      },
+      animation: { duration: 300, easing: 'easeInOutQuart' }
+    }
+  });
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+if (document.readyState === 'complete') {
+  tryAutoLoad();
+} else {
+  window.addEventListener('load', tryAutoLoad);
+}
+</script>
+</body>
+</html>

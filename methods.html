@@ -120,23 +120,18 @@
   <h2>Data</h2>
   <p>
     Weekly all-cause mortality counts and population estimates are drawn from
-    <strong>Eurostat</strong>, for European nations,
-    <strong>Israel Central Bureau of Statistics</strong>, for Israel,
-    <strong>Stats NZ/ Human Mortality Database (HMD)</strong>, for New Zealand and
-    <strong>Human Mortality Database</strong> for Australia, Canada, Chile, South Korea, 
-    Taiwan and United States.
+    <strong>Eurostat</strong> and, for Israel, the
+    <strong>Israel Central Bureau of Statistics</strong>
+    (<a href="https://www.cbs.gov.il/he/cbsnewbrand/Pages/default.aspx" target="_blank" rel="noopener">CBS</a>).
     Counts are converted to age-standardised mortality rates (ASMR) per 100,000
     population using the <strong>2013 European Standard Population</strong> (ESP13)
     with 5-year age bins and weekly interpolated populations.
   </p>
   <p>
-    A number of country-specific adjustments apply: Israel uses the 0–19 age group
+    A small number of country-specific adjustments apply: Israel uses the 0–19 age group
     only; Germany uses 10-year bins below age 40 (20–44 observations); Sweden includes
     deaths recorded with an unknown week of death (W99). All 2025 data are preliminary
-    and subject to revision. 2024 data are preliminary/ incomplete forSouth Korea.  
-    Data for all countries from HMD are provided with 0-14, 15-64,
-    65-74, 75-84, 85+ age groups, so only all ages and 65+ observations are prossible. 
-    *These wider age groups may distort ASMR results slightly.
+    and subject to revision.
   </p>
 
   <!-- ── VIEWS ─────────────────────────────────────────────────────────────── -->
@@ -369,6 +364,57 @@
     Baselines with fewer than 5 training years are suppressed in the weekly (& annual) view.
   </p>
 
+  <!-- ── CAUSES OF DEATH EXPLORER ─────────────────────────────────────────── -->
+  <h2>Causes of Death Explorer</h2>
+  <p>
+    The <a href="causes.html">Causes of Death Explorer</a> is a companion page that
+    displays annual age-standardised mortality rates broken down by ICD-10 cause chapter
+    for 28 countries from 2013 to 2023. Unlike the weekly all-cause data, these are
+    pre-computed annual ASMR values sourced from national and international cause-of-death
+    registries (see Sources below).
+  </p>
+  <p>
+    Users may select any combination of countries, any age group, and one or more causes
+    of death simultaneously. When multiple causes are selected, their rates are
+    <strong>summed</strong> for each country and year to produce a single composite series.
+  </p>
+
+  <h3>Baseline and confidence interval</h3>
+  <p>
+    The causes page applies the same <strong>annual OLS trend baseline</strong> described
+    above — a linear regression of the annual ASMR sum against year, fit over the chosen
+    training window (2013–19, 2014–19, or 2015–19), with the same full
+    prediction interval formula including the leverage penalty:
+  </p>
+  <div class="formula">
+    CI = baseline ± t(n−2) · SE · √(1 + 1/n + (year − year̄)² / Sxx)
+  </div>
+  <p>
+    Here the regression input is already an annual rate, so no weekly summation or
+    52-week normalisation is required. The projected baseline and widening CI band
+    behave identically to the Annual view on the main explorer.
+  </p>
+
+  <h3>Baseline suppression</h3>
+  <p>
+    The baseline and CI are suppressed for a given country when the
+    <strong>summed</strong> ASMR across selected causes is zero or missing for any
+    year within the training window. For example, selecting only
+    <em>(U071) Covid-19 identified</em> produces a zero sum for every pre-2020 training
+    year, so no trend can be meaningfully fitted. Adding a second cause whose values
+    are non-zero throughout the training period — such as <em>(V01–Y89) External</em>
+    — raises the summed total above zero for all training years, restoring the baseline.
+    This ensures the trend is never fit on a series that is structurally zero in the
+    training window, which would produce a spurious and misleading projection.
+  </p>
+
+  <div class="callout">
+    <strong>Note.</strong> Cause-of-death coding practices and completeness vary across
+    countries and years. Cross-country comparisons should be interpreted with caution,
+    particularly for causes that are sensitive to coding conventions (e.g. dementia,
+    ill-defined causes, Covid-19 identification vs. attribution).
+  </div>
+
   <!-- ── SOURCES ──────────────────────────────────────────────────────────── -->
   <h2>Sources</h2>
   <p>Eurostat — Deaths by week, sex and 5-year age group:<br>
@@ -386,12 +432,22 @@
   <p>Israel Central Bureau of Statistics:<br>
     <a href="https://www.cbs.gov.il/he/cbsnewbrand/Pages/default.aspx" target="_blank" rel="noopener">cbs.gov.il</a>
   </p>
-<p>Stats NZ:<br>
-    <a href="https://infoshare.stats.govt.nz/SelectVariables.aspx?pxID=a1462c93-a531-4366-8e56-69f379b851e5" target="_blank" rel="noopener">Stats NZ Infoshare</a>
+  <p>Eurostat — Causes of death by age and sex (annual):<br>
+    <a href="https://ec.europa.eu/eurostat/databrowser/view/hlth_cd_aro/default/table?lang=en" target="_blank" rel="noopener">hlth_cd_aro</a>
   </p>
-  <p>Human Mortality Database:<br>
-    <a href="https://www.mortality.org/" target="_blank" rel="noopener">Mortality.org</a>
+  <p>US CDC WONDER — Multiple Cause of Death:<br>
+    <a href="https://wonder.cdc.gov/mcd.html" target="_blank" rel="noopener">wonder.cdc.gov/mcd</a>
   </p>
+  <p>ONS — Deaths by sex, 5-year age group and underlying cause, England and Wales, 2010–2021:<br>
+    <a href="https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1017deathoccurrencesbysexfiveyearagegroupandunderlyingcauseicd10codeenglandandwales2010to2021" target="_blank" rel="noopener">ONS ad hoc — 2010 to 2021</a>
+  </p>
+  <p>ONS — Deaths by sex, 5-year age group and underlying cause, England and Wales, 2022:<br>
+    <a href="https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1050deathoccurrencesbysexfiveyearagegroupandunderlyingcauseicd10codeenglandandwales2022" target="_blank" rel="noopener">ONS ad hoc — 2022</a>
+  </p>
+  <p>Te Whatu Ora (Health New Zealand) — Mortality Data Web Tool:<br>
+    <a href="https://www.tewhatuora.govt.nz/for-health-professionals/data-and-statistics/mortality/data-web-tool" target="_blank" rel="noopener">tewhatuora.govt.nz</a>
+  </p>
+
   <footer>Mortality Explorer — methods</footer>
 
 </div>
