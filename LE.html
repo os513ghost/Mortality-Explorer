@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sub-National Life Expectancy</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0d0f14;--surface:#151820;--surface2:#1c2030;--border:#252a3a;--text:#e8eaf0;--text-dim:#6b7280;--text-mid:#9ca3af;--accent:#e8c97a;--accent2:#7a9ee8;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-weight:300;display:flex;flex-direction:column;min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(122,158,232,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(122,158,232,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+  .container{position:relative;z-index:1;max-width:1600px;width:100%;margin:0 auto;padding:0 16px;display:flex;flex-direction:column;flex:1;}
+  header{padding:20px 0 16px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-shrink:0;}
+  .title-block h1{font-family:'DM Serif Display',serif;font-size:clamp(1.2rem,3vw,2rem);font-weight:400;letter-spacing:-.02em;line-height:1.1;}
+  .title-block h1 em{font-style:italic;color:var(--accent);}
+  .title-block p{margin-top:4px;color:var(--text-dim);font-size:.78rem;line-height:1.6;}
+  .title-block p a{color:var(--accent2);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s;}
+  .title-block p a:hover{border-bottom-color:var(--accent2);}
+  .title-block p .sep{color:var(--border);margin:0 6px;}
+
+  #loading{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;}
+  .spinner{width:36px;height:36px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .load-text{font-family:'DM Mono',monospace;font-size:.72rem;color:var(--text-dim);letter-spacing:.1em;}
+
+  #upload-prompt{display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:12px;}
+  .upload-box{border:2px dashed var(--border);border-radius:12px;padding:36px 48px;cursor:pointer;transition:all .2s;max-width:440px;width:100%;text-align:center;}
+  .upload-box:hover{border-color:var(--accent);background:rgba(232,201,122,.04);}
+  .upload-box h3{font-family:'DM Serif Display',serif;font-size:1.1rem;font-weight:400;margin:10px 0 6px;}
+  .upload-box p{font-size:.75rem;color:var(--text-dim);}
+  #file-input{display:none;}
+
+  #app{display:none;flex-direction:column;flex:1;}
+
+
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;flex-shrink:0;}
+  .control-group{display:flex;flex-direction:column;gap:5px;}
+  label{font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);}
+  select{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:.82rem;border-radius:6px;padding:6px 28px 6px 9px;outline:none;transition:border-color .2s;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;}
+  select:hover{border-color:var(--accent);}
+
+  .map-outer{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;display:flex;flex-direction:column;margin-bottom:6px;flex-shrink:0;}
+  .map-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+  .map-title{font-family:'DM Serif Display',serif;font-size:1rem;font-weight:400;}
+  .map-subtitle{font-size:.72rem;color:var(--text-dim);margin-top:2px;}
+  .map-body{display:flex;gap:12px;}
+
+  /* Aspect-ratio box: height = 58% of width, always defined before JS runs */
+  #map-svg-wrap{
+    flex:1;
+    aspect-ratio:100/58;
+    min-height:300px;
+    background:#0d0f14;
+    border-radius:4px;
+    overflow:hidden;
+  }
+  #map-svg-wrap svg{display:block;width:100%;height:100%;}
+
+  .legend-col{flex-shrink:0;width:64px;display:flex;flex-direction:column;justify-content:center;padding-top:4px;}
+  .legend-label{font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;}
+  .legend-inner{position:relative;width:14px;}
+  #legend-canvas{display:block;border-radius:3px;}
+  .legend-ticks{position:absolute;left:18px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:space-between;}
+  .ltick{font-family:'DM Mono',monospace;font-size:.6rem;color:var(--text-dim);white-space:nowrap;line-height:1;}
+  .ltick.zero{color:var(--text-mid);}
+
+  .map-note{display:flex;flex-wrap:wrap;gap:14px;padding:8px 0 0;font-size:.62rem;color:var(--text-dim);}
+  .map-note-item{display:flex;align-items:center;gap:5px;}
+  .note-swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+
+  #tooltip{position:fixed;pointer-events:none;z-index:200;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:'DM Mono',monospace;font-size:.72rem;color:var(--text);line-height:1.75;max-width:280px;display:none;box-shadow:0 8px 32px rgba(0,0,0,.5);}
+  .tt-name{font-size:.76rem;color:var(--accent);margin-bottom:5px;font-weight:500;font-family:'DM Sans',sans-serif;}
+  .tt-row{font-size:.69rem;color:var(--text-mid);}
+  .tt-row strong{color:var(--text);}
+  .tt-excess{font-size:.73rem;margin-top:3px;}
+  .tt-excess.pos{color:#7ae8b0;}.tt-excess.neg{color:#e87a7a;}.tt-excess.neu{color:var(--text-mid);}
+  .tt-nobl{font-size:.67rem;color:var(--text-dim);font-style:italic;margin-top:3px;}
+  .tt-nodata{font-size:.67rem;color:var(--text-dim);font-style:italic;}
+
+  .disclaimer{font-size:.62rem;color:var(--text-dim);line-height:1.5;padding:6px 2px 14px;flex-shrink:0;}
+  footer{text-align:center;padding:14px;color:var(--text-dim);font-size:.7rem;border-top:1px solid var(--border);flex-shrink:0;position:relative;z-index:1;}
+
+  @media(max-width:900px){
+    #map-svg-wrap{aspect-ratio:100/70;}
+  }
+  @media(max-width:600px){
+    .container{padding:0 10px;}
+    header{padding:12px 0 10px;margin-bottom:10px;}
+    .title-block h1{font-size:1.1rem;}
+    .title-block p{font-size:.67rem;}
+    .controls{padding:10px;gap:10px;flex-direction:column;}
+    .control-group{width:100%;}
+    select{width:100%;font-size:.85rem;padding:8px 28px 8px 10px;}
+    .map-outer{padding:10px;}
+    .map-body{flex-direction:column;}
+    #map-svg-wrap{aspect-ratio:4/3;min-height:0;}
+    /* Legend goes horizontal below map on phone */
+    .legend-col{width:100%;flex-direction:row;align-items:center;gap:12px;padding-top:8px;padding-left:0;}
+    .legend-label{margin-bottom:0;white-space:nowrap;}
+    .legend-inner{flex:1;height:14px;position:relative;}
+    #legend-canvas{width:100%;height:14px;border-radius:3px;}
+    .legend-ticks{flex-direction:row;justify-content:space-between;top:18px;left:0;right:0;bottom:auto;height:auto;}
+    .ltick{transform:none;}
+    .disclaimer{font-size:.6rem;}
+    footer{font-size:.65rem;padding:10px;}
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="title-block">
+      <h1>Sub-National <em>Life Expectancy</em></h1>
+      <p>
+        Losses &amp; gains in months vs. pre-pandemic trend · NUTS2 regions · 2013–2024
+        <span class="sep">·</span>
+        By <a href="https://x.com/OS51388957" target="_blank" rel="noopener">@OS51388957</a>
+        <span class="sep">·</span>
+        <a href="index.html">Mortality Explorer</a>
+        <span class="sep">·</span>
+        <a href="causes.html">Causes of Death</a>
+        <span class="sep">·</span>
+        <a href="methods.html">Methods</a>
+      </p>
+    </div>
+  </header>
+
+  <div id="loading"><div class="spinner"></div><div class="load-text" id="load-text">Loading…</div></div>
+
+  <div id="upload-prompt">
+    <div class="upload-box" onclick="document.getElementById('file-input').click()">
+      <div style="font-size:2rem">📂</div>
+      <h3>Load life expectancy data</h3>
+      <p>Select <strong>Live_Life_Expectancy.csv</strong></p>
+    </div>
+    <input type="file" id="file-input" accept=".csv" onchange="handleFileUpload(event)">
+    <p style="font-size:.72rem;color:var(--text-dim);margin-top:8px;text-align:center;">Place CSV next to <code>LE.html</code> for auto-load</p>
+  </div>
+
+  <div id="app">
+    <div class="controls">
+      <div class="control-group">
+        <label>Age</label>
+        <select id="sel-age">
+          <option value="At Birth" selected>At Birth</option>
+          <option value="65">Age 65</option>
+          <option value="80">Age 80</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Sex</label>
+        <select id="sel-sex">
+          <option value="Total" selected>Total</option>
+          <option value="Females">Females</option>
+          <option value="Males">Males</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Observed Year</label>
+        <select id="sel-year"></select>
+      </div>
+      <div class="control-group">
+        <label>Baseline Training Period</label>
+        <select id="sel-baseline">
+          <option value="2013">2013–2019</option>
+          <option value="2014">2014–2019</option>
+          <option value="2015">2015–2019</option>
+        </select>
+      </div>
+    </div>
+    <div class="map-outer">
+      <div class="map-header">
+        <div>
+          <div class="map-title">Life Expectancy Loss / Gain vs Trend</div>
+          <div class="map-subtitle" id="map-subtitle"></div>
+        </div>
+      </div>
+      <div class="map-body">
+        <div id="map-svg-wrap"></div>
+        <div class="legend-col">
+          <div class="legend-label">Months</div>
+          <div class="legend-inner" id="legend-inner">
+            <canvas id="legend-canvas" width="14" height="220"></canvas>
+            <div class="legend-ticks" id="legend-ticks" style="height:220px;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="map-note" id="map-note"></div>
+    </div>
+    <p class="disclaimer">
+      Baseline: linear OLS trend fitted over selected training window (end year 2019), projected forward.
+      95% prediction interval includes leverage penalty.
+      Regions with fewer than 5 training-year observations shown without baseline.
+      Map geometry: Eurostat GISCO, NUTS 2021 classification.
+    </p>
+  </div>
+</div>
+<footer>
+  Sub-National Life Expectancy
+  <span style="margin:0 10px;color:var(--border)">·</span>
+  <a href="index.html" style="color:var(--accent2);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s" onmouseover="this.style.borderBottomColor='var(--accent2)'" onmouseout="this.style.borderBottomColor='transparent'">Mortality Explorer</a>
+  <span style="margin:0 10px;color:var(--border)">·</span>
+  <a href="causes.html" style="color:var(--accent2);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s" onmouseover="this.style.borderBottomColor='var(--accent2)'" onmouseout="this.style.borderBottomColor='transparent'">Causes of Death</a>
+  <span style="margin:0 10px;color:var(--border)">·</span>
+  <a href="methods.html" style="color:var(--accent2);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s" onmouseover="this.style.borderBottomColor='var(--accent2)'" onmouseout="this.style.borderBottomColor='transparent'">Methods</a>
+</footer>
+<div id="tooltip"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let allData     = {};
+let geoNames    = {};
+let geoFeatures = null;
+
+let selAge     = 'At Birth';
+let selSex     = 'Total';
+let selYear    = 2023;
+let selBlStart = 2013;
+const BL_END   = 2019;
+const EXTENT   = 24;
+
+// ── Colour ────────────────────────────────────────────────────────────────────
+function monthsToColor(m) {
+  const t = Math.max(-1, Math.min(1, m / EXTENT));
+  let r, g, b;
+  if (t >= 0) { r=Math.round(37+t*(80-37));  g=Math.round(42+t*(200-42)); b=Math.round(58+t*(140-58)); }
+  else        { const u=-t; r=Math.round(37+u*(220-37)); g=Math.round(42+u*(70-42));  b=Math.round(58+u*(60-58)); }
+  return `rgb(${r},${g},${b})`;
+}
+
+// ── Math ──────────────────────────────────────────────────────────────────────
+function tCrit(df){if(df<=0)return 12.706;const t=[12.706,4.303,3.182,2.776,2.571,2.447,2.365,2.306,2.262,2.228];if(df<=10)return t[df-1];if(df<=15)return 2.131;if(df<=20)return 2.086;if(df<=30)return 2.042;return 1.960;}
+function linreg(xs,ys){const n=xs.length;if(n<2)return null;const xm=xs.reduce((s,v)=>s+v,0)/n,ym=ys.reduce((s,v)=>s+v,0)/n;const Sxx=xs.reduce((s,v)=>s+(v-xm)**2,0);if(Sxx===0)return null;const Sxy=xs.reduce((s,v,i)=>s+(v-xm)*(ys[i]-ym),0);const sl=Sxy/Sxx,ic=ym-sl*xm;const se=Math.sqrt(xs.reduce((s,v,i)=>s+(ys[i]-(sl*v+ic))**2,0)/Math.max(n-2,1));return{sl,ic,se,xm,Sxx,n,tc:tCrit(n-2)};}
+function predPI(r,x){const p=r.sl*x+r.ic,hw=r.se*r.tc*Math.sqrt(1+1/r.n+(x-r.xm)**2/r.Sxx);return{mean:p,lo:p-hw,hi:p+hw};}
+
+function computeExcess(geo){
+  const key=`${geo}|${selAge}|${selSex}`;
+  const ymap=allData[key];
+  if(!ymap)return{s:'nodata'};
+  const obs=ymap[selYear];
+  if(obs==null)return{s:'nodata'};
+  const xs=[],ys=[];
+  for(let yr=selBlStart;yr<=BL_END;yr++){
+    if(ymap[yr]==null)return{s:'nobase',obs}; // any missing year in window → no baseline
+    xs.push(yr);ys.push(ymap[yr]);
+  }
+  if(xs.length<2)return{s:'nobase',obs};
+  const reg=linreg(xs,ys);
+  if(!reg)return{s:'nobase',obs};
+  const pi=predPI(reg,selYear);
+  return{s:'ok',obs,baseline:pi.mean,blLo:pi.lo,blHi:pi.hi,exM:(obs-pi.mean)*12,loM:(obs-pi.hi)*12,hiM:(obs-pi.lo)*12};
+}
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+function setMsg(t){const el=document.getElementById('load-text');if(el)el.textContent=t;}
+
+async function tryAutoLoad() {
+  setMsg('Loading map geometry…');
+
+  // Try multiple geometry sources in order
+  // Eurostat GISCO — official NUTS2 GeoJSON, 2021 classification, WGS84
+  // 60M generalised resolution: fast to load, sharp enough for a choropleth
+  const geoUrl = 'https://gisco-services.ec.europa.eu/distribution/v2/nuts/geojson/NUTS_RG_60M_2021_4326_LEVL_2.geojson';
+  try {
+    const r = await fetch(geoUrl);
+    if (r.ok) {
+      const data = await r.json();
+      geoFeatures = data.features.filter(f => (f.properties.NUTS_ID||'').length === 4);
+    }
+  } catch(e) { console.warn('Geometry fetch failed:', e.message); }
+
+  if (!geoFeatures || geoFeatures.length === 0) {
+    document.getElementById('loading').innerHTML =
+      `<div style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--text-dim);text-align:center;padding:24px;max-width:420px">
+        Could not load NUTS2 map geometry.<br><br>
+        This page requires an internet connection to fetch region boundaries.<br>
+        Please check your connection and reload.
+      </div>`;
+    return;
+  }
+
+  setMsg('Loading life expectancy data…');
+  let csvText = null;
+  for (const fn of ['Live_Life_Expectancy.csv','live_life_expectancy.csv']) {
+    try {
+      const r = await fetch(fn+'?v='+Date.now(),{cache:'no-cache'});
+      if (!r.ok) continue;
+      const t = await r.text();
+      if (t && t.trim().length > 10) { csvText = t; console.log(`CSV loaded: ${fn}`); break; }
+    } catch(e) { console.warn('CSV fetch:', e.message); }
+  }
+
+  if (!csvText) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('upload-prompt').style.display = 'flex';
+    return;
+  }
+  parseCSV(csvText);
+}
+
+function handleFileUpload(e) {
+  const f = e.target.files[0]; if (!f) return;
+  document.getElementById('upload-prompt').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  setMsg('Parsing…');
+  const reader = new FileReader();
+  reader.onload = ev => parseCSV(ev.target.result);
+  reader.readAsText(f, 'latin1');
+}
+
+function parseCSV(text) {
+  Papa.parse(text, {
+    header:true, skipEmptyLines:true, dynamicTyping:false,
+    complete: res => {
+      const yearSet = new Set();
+      let rowsParsed = 0;
+      res.data.forEach(r => {
+        const rawGeo = (r['geo'] || '').trim();
+        const geo = rawGeo.split(':')[0].trim(); // handle "AT11:Burgenland"
+        if (geo === '#N/A' || geo === '' || geo.length !== 4) return;
+        const age  = (r['age']  || '').trim();
+        const sex  = (r['sex']  || '').trim();
+        const yr   = parseInt(r['year'], 10);
+        const le   = parseFloat(r['Life_Expectancy']);
+        const name = (r['geo name'] || '').trim();
+        if (isNaN(yr) || isNaN(le)) return;
+        const key = `${geo}|${age}|${sex}`;
+        if (!allData[key]) allData[key] = {};
+        allData[key][yr] = le;
+        if (!geoNames[geo]) geoNames[geo] = name;
+        yearSet.add(yr);
+        rowsParsed++;
+      });
+
+      const YEARS = Array.from(yearSet).sort((a,b)=>a-b);
+      const yrSel = document.getElementById('sel-year');
+      yrSel.innerHTML = '';
+      YEARS.forEach(yr => {
+        const o = document.createElement('option');
+        o.value = yr; o.textContent = yr;
+        if (yr === 2023) o.selected = true;
+        yrSel.appendChild(o);
+      });
+      selYear = YEARS.includes(2023) ? 2023 : YEARS[YEARS.length-1];
+      yrSel.value = selYear;
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+
+      document.getElementById('sel-age').addEventListener('change', e=>{selAge=e.target.value;updateMap();});
+      document.getElementById('sel-sex').addEventListener('change', e=>{selSex=e.target.value;updateMap();});
+      document.getElementById('sel-year').addEventListener('change', e=>{selYear=parseInt(e.target.value);updateMap();});
+      document.getElementById('sel-baseline').addEventListener('change', e=>{selBlStart=parseInt(e.target.value);updateMap();});
+
+      drawLegend();
+
+      // Draw map once element has real dimensions
+      const wrap = document.getElementById('map-svg-wrap');
+      // Try immediate read first (may already have dimensions from aspect-ratio CSS)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const W = wrap.clientWidth;
+          const H = wrap.clientHeight;
+              if (W > 10 && H > 10) {
+            buildMap(W, H);
+          } else {
+            // Fallback: use ResizeObserver
+            const ro = new ResizeObserver(entries => {
+              for (const entry of entries) {
+                const W2 = entry.contentRect.width;
+                const H2 = entry.contentRect.height;
+                if (W2 > 10 && H2 > 10) {
+                  ro.disconnect();
+                  buildMap(W2, H2);
+                }
+              }
+            });
+            ro.observe(wrap);
+          }
+        });
+      });
+    }
+  });
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+function drawLegend() {
+  const canvas = document.getElementById('legend-canvas');
+  const ctx = canvas.getContext('2d');
+  const isHoriz = window.innerWidth <= 600;
+  const tickVals = [EXTENT, 12, 6, 0, -6, -12, -EXTENT];
+
+  if (isHoriz) {
+    // Horizontal: left = max gain (+24), right = max loss (-24)
+    const W = canvas.offsetWidth || 200;
+    canvas.width = W; canvas.height = 14;
+    for (let i = 0; i < W; i++) {
+      ctx.fillStyle = monthsToColor(EXTENT - (i/(W-1))*EXTENT*2);
+      ctx.fillRect(i, 0, 1, 14);
+    }
+  } else {
+    // Vertical: top = max gain (+24), bottom = max loss (-24)
+    canvas.width = 14; canvas.height = 220;
+    const H = canvas.height;
+    for (let i = 0; i < H; i++) {
+      ctx.fillStyle = monthsToColor(EXTENT - (i/(H-1))*EXTENT*2);
+      ctx.fillRect(0, i, 14, 1);
+    }
+    document.getElementById('legend-ticks').style.height = '220px';
+  }
+
+  const ticks = document.getElementById('legend-ticks');
+  ticks.innerHTML = '';
+  tickVals.forEach(v => {
+    const d = document.createElement('div');
+    d.className = 'ltick'+(v===0?' zero':'');
+    d.textContent = (v>0?'+':'')+v;
+    ticks.appendChild(d);
+  });
+}
+
+// ── Build map (once, when dimensions are known) ───────────────────────────────
+let svgEl, regionPaths;
+
+function buildMap(W, H) {
+  const proj = d3.geoAzimuthalEqualArea()
+    .rotate([-10, -52])
+    .scale(Math.min(W, H) * 1.4)
+    .translate([W * 0.50, H * 0.51]);
+
+  const path = d3.geoPath().projection(proj);
+
+  svgEl = d3.select('#map-svg-wrap')
+    .append('svg')
+    .attr('width', W)
+    .attr('height', H);
+
+  regionPaths = svgEl.append('g')
+    .selectAll('path')
+    .data(geoFeatures, d => d.properties.NUTS_ID)
+    .join('path')
+      .attr('d', path)
+      .attr('stroke', '#0d0f14')
+      .attr('stroke-width', 0.4)
+      .attr('fill', '#1c2030')
+      .on('mousemove', onMouseMove)
+      .on('mouseleave', () => { document.getElementById('tooltip').style.display='none'; });
+
+  // Store for resize
+  svgEl._proj = proj; svgEl._path = path; svgEl._W = W; svgEl._H = H;
+
+  updateMap();
+}
+
+// ── Update colours ────────────────────────────────────────────────────────────
+function updateMap() {
+  if (!regionPaths) return;
+  updateSubtitle();
+
+  let ok=0, nodata=0, nobase=0;
+  regionPaths.attr('fill', d => {
+    const geo = d.properties.NUTS_ID || '';
+    const e = computeExcess(geo);
+    if (e.s==='nodata')  { nodata++; return '#161b28'; }
+    if (e.s==='nobase')  { nobase++; return '#252a3a'; }
+    ok++;
+    return monthsToColor(e.exM);
+  });
+  console.log(`updateMap: ok=${ok} nobase=${nobase} nodata=${nodata}`);
+
+  document.getElementById('map-note').innerHTML =
+    `<span class="map-note-item"><span class="note-swatch" style="background:#252a3a"></span>Insufficient training data</span>`+
+    `<span class="map-note-item"><span class="note-swatch" style="background:#161b28"></span>No data for this selection</span>`;
+}
+
+function updateSubtitle() {
+  const al = selAge==='At Birth'?'at birth':`at age ${selAge}`;
+  document.getElementById('map-subtitle').textContent =
+    `Months vs OLS trend (${selBlStart}–${BL_END}) · LE ${al} · ${selSex} · ${selYear}`;
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+function onMouseMove(event, d) {
+  const geo = d.properties.NUTS_ID || '';
+  const name = geoNames[geo] || d.properties.name || d.properties.na || geo;
+  const e = computeExcess(geo);
+  const al = selAge==='At Birth'?'at birth':`age ${selAge}`;
+  let html = `<div class="tt-name">${name}</div>`;
+  if (e.s==='nodata') {
+    html += `<div class="tt-nodata">No data · ${selSex} · LE ${al} · ${selYear}</div>`;
+  } else {
+    html += `<div class="tt-row">Observed LE: <strong>${e.obs.toFixed(2)} yrs</strong></div>`;
+    if (e.s==='nobase') {
+      html += `<div class="tt-nobl">Fewer than 5 training years — no baseline</div>`;
+    } else {
+      html += `<div class="tt-row">Trend baseline: <strong>${e.baseline.toFixed(2)} yrs</strong> [${e.blLo.toFixed(2)}, ${e.blHi.toFixed(2)}]</div>`;
+      const s=e.exM>=0?'+':'', ls=e.loM>=0?'+':'', hs=e.hiM>=0?'+':'';
+      const cls=e.exM>0.5?'pos':e.exM<-0.5?'neg':'neu';
+      html += `<div class="tt-excess ${cls}">Δ ${s}${e.exM.toFixed(1)} months [${ls}${e.loM.toFixed(1)}, ${hs}${e.hiM.toFixed(1)}]</div>`;
+    }
+  }
+  const tt = document.getElementById('tooltip');
+  tt.innerHTML = html; tt.style.display = 'block';
+  const m=14, w=tt.offsetWidth, h=tt.offsetHeight;
+  let x=event.clientX+m, y=event.clientY+m;
+  if (x+w>window.innerWidth-8)  x=event.clientX-w-m;
+  if (y+h>window.innerHeight-8) y=event.clientY-h-m;
+  tt.style.left=x+'px'; tt.style.top=y+'px';
+}
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+let rzTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(rzTimer);
+  rzTimer = setTimeout(() => {
+    drawLegend();
+    if (!svgEl || !geoFeatures) return;
+    const wrap = document.getElementById('map-svg-wrap');
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    if (!W || !H) return;
+    svgEl._proj.scale(Math.min(W,H)*1.4).translate([W*0.50,H*0.51]);
+    const newPath = d3.geoPath().projection(svgEl._proj);
+    svgEl.attr('width',W).attr('height',H);
+    regionPaths.attr('d', newPath);
+    svgEl._W=W; svgEl._H=H;
+  }, 200);
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+if (document.readyState==='complete') tryAutoLoad();
+else window.addEventListener('load', tryAutoLoad);
+</script>
+</body>
+</html>

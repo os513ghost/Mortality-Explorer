@@ -111,7 +111,11 @@
 <div class="container">
 
   <header>
-    <a href="index.html">← Back to Explorer</a>
+    <a href="index.html">← Mortality Explorer</a>
+    <span style="color:var(--border);margin:0 8px">·</span>
+    <a href="causes.html">Causes of Death</a>
+    <span style="color:var(--border);margin:0 8px">·</span>
+    <a href="LE.html">Sub-National LE</a>
     <h1>Statistical <em>Methods</em></h1>
     <p class="subtitle">How baselines, confidence intervals and excess mortality are computed.</p>
   </header>
@@ -131,7 +135,7 @@
     A small number of country-specific adjustments apply: Israel uses the 0–19 age group
     only; Germany uses 10-year bins below age 40 (20–44 observations); Sweden includes
     deaths recorded with an unknown week of death (W99). All 2025 data are preliminary
-    and subject to revision. Causes of deaths separate details are in the Causes of death section below.
+    and subject to revision.
   </p>
 
   <!-- ── VIEWS ─────────────────────────────────────────────────────────────── -->
@@ -364,56 +368,54 @@
     Baselines with fewer than 5 training years are suppressed in the weekly (& annual) view.
   </p>
 
-  <!-- ── CAUSES OF DEATH EXPLORER ─────────────────────────────────────────── -->
-  <h2>Causes of Death Explorer</h2>
+  <!-- ── SUB-NATIONAL LIFE EXPECTANCY ─────────────────────────────────────── -->
+  <h2>Sub-National Life Expectancy Explorer</h2>
   <p>
-    The <a href="causes.html">Causes of Death Explorer</a> displays annual age-standardised mortality rates 
-    broken down by ICD-10 cause chapter for 28 countries from 2013 onwards. 
-    Unlike the weekly all-cause data, these are annual ASMR values were caluculated using annual figuers with mid-year/ average populations.
-    Data sourced from <strong>Eurostat</strong> adn form additional national cause-of-death
-    registries (see Sources below). All countries' ASMRs were calculated with 5 year age bins (90+) apart
-    from New Zealand, with 85+ opene ended bin.
+    The <a href="LE.html">Sub-National Life Expectancy Explorer</a> displays annual
+    life expectancy at NUTS2 regional level for up to 252 regions across 33 European
+    countries, sourced from Eurostat. Three measures are available — life expectancy
+    at birth, at age 65, and at age 80 — broken down by sex.
   </p>
   <p>
-    Users may select any combination of countries, any age group, and one or more causes
-    of death simultaneously. When multiple causes are selected, their rates are
-    <strong>summed</strong> for each country and year to produce a single composite series.
+    The displayed value for each region is not the raw life expectancy but the
+    <strong>deviation from the expected trend in months</strong>: a positive number
+    means life expectancy exceeded what the pre-pandemic trend would have predicted
+    (a gain); a negative number means it fell short (a loss).
   </p>
 
   <h3>Baseline and confidence interval</h3>
   <p>
-    The causes page applies the same <strong>annual OLS trend baseline</strong> described
-    above — a linear regression of the annual ASMR sum against year, fit over the chosen
-    training window (2013–19, 2014–19, or 2015–19), with the same full
-    prediction interval formula including the leverage penalty:
+    The method is identical to the <strong>annual trend baseline</strong> used on the
+    Mortality Explorer and the Causes of Death page. For each region, sex, and age
+    group, an OLS linear regression is fit on the observed life expectancy values
+    across the selected training window (2013–19, 2014–19, or 2015–19), and the
+    fitted line is projected forward using the same full prediction interval formula:
   </p>
   <div class="formula">
     CI = baseline ± t(n−2) · SE · √(1 + 1/n + (year − year̄)² / Sxx)
   </div>
   <p>
-    Here the regression input is already an annual rate, so no weekly summation or
-    52-week normalisation is required. The projected baseline and widening CI band
-    behave identically to the Annual view on the main explorer.
+    The excess in years is converted to months by multiplying by 12. The confidence
+    interval on the tooltip likewise reflects the range of plausible excess values
+    given the uncertainty in the projected baseline.
   </p>
 
   <h3>Baseline suppression</h3>
   <p>
-    The baseline and CI are suppressed for a given country when the
-    <strong>summed</strong> ASMR across selected causes is zero or missing for any
-    year within the training window. For example, selecting only
-    <em>(U071) Covid-19 identified</em> produces a zero sum for every pre-2020 training
-    year, so no trend can be meaningfully fitted. Adding a second cause whose values
-    are non-zero throughout the training period — such as <em>(V01–Y89) External</em>
-    — raises the summed total above zero for all training years, restoring the baseline.
-    This ensures the trend is never fit on a series that is structurally zero in the
-    training window, which would produce a spurious projection.
+    A region's baseline is suppressed if <strong>any year within the selected training
+    window is missing</strong>. For the 2013–19 window, a small number of regions
+    (predominantly in Hungary and Poland) lack 2013 data and are therefore shown
+    without a baseline for that window only. Switching to the 2014–19 or 2015–19
+    window restores their baselines, as all regions have complete data from 2014
+    onward.
   </p>
 
   <div class="callout">
-    <strong>Note.</strong> Cause-of-death coding practices and completeness vary across
-    countries and years. Cross-country comparisons should be interpreted with caution,
-    particularly for causes that are sensitive to coding conventions (e.g. dementia,
-    ill-defined causes, Covid-19 identification vs. attribution).
+    <strong>Note.</strong> Life expectancy estimates at NUTS2 level are based on
+    regional death counts and population denominators, which are smaller than national
+    figures. Year-to-year volatility is therefore higher for small regions, and the
+    confidence interval will be correspondingly wider. Cross-regional comparisons
+    should account for differences in regional population size.
   </div>
 
   <!-- ── SOURCES ──────────────────────────────────────────────────────────── -->
@@ -445,17 +447,21 @@
   <p>ONS — Deaths by sex, 5-year age group and underlying cause, England and Wales, 2022:<br>
     <a href="https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1050deathoccurrencesbysexfiveyearagegroupandunderlyingcauseicd10codeenglandandwales2022" target="_blank" rel="noopener">ONS ad hoc — 2022</a>
   </p>
-  <p>ONS — Analysis of population estimates tool for UK:<br>
-    <a href="https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/analysisofpopulationestimatestoolforuk" target="_blank" rel="noopener">ONS ad hoc — 2022</a>
-  </p>
   <p>Te Whatu Ora (Health New Zealand) — Mortality Data Web Tool:<br>
     <a href="https://www.tewhatuora.govt.nz/for-health-professionals/data-and-statistics/mortality/data-web-tool" target="_blank" rel="noopener">tewhatuora.govt.nz</a>
   </p>
-  p>Stats NZ Infoshare:<br>
-    <a href="https://infoshare.stats.govt.nz/Default.aspx" target="_blank" rel="noopener">tewhatuora.govt.nz</a>
+  <p>Eurostat — Life expectancy by age, sex and NUTS2 region:<br>
+    <a href="https://ec.europa.eu/eurostat/databrowser/view/demo_r_mlifexp/default/table?lang=en" target="_blank" rel="noopener">demo_r_mlifexp</a>
   </p>
 
-  <footer>Mortality Explorer — methods</footer>
+  <footer>Mortality Explorer — methods
+    <span style="margin:0 10px;color:var(--border)">·</span>
+    <a href="index.html">Mortality Explorer</a>
+    <span style="margin:0 10px;color:var(--border)">·</span>
+    <a href="causes.html">Causes of Death</a>
+    <span style="margin:0 10px;color:var(--border)">·</span>
+    <a href="LE.html">Sub-National LE</a>
+  </footer>
 
 </div>
 </body>
