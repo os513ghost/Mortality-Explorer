@@ -53,6 +53,10 @@
     font-size: 0.85rem; color: var(--text-mid); letter-spacing: 0.08em;
     text-transform: uppercase; margin: 28px 0 10px;
   }
+  h4 {
+    font-family: 'DM Sans', sans-serif; font-weight: 500;
+    font-size: 0.82rem; color: var(--text-mid); margin: 20px 0 8px;
+  }
   p { font-size: 0.88rem; line-height: 1.75; color: var(--text-mid); margin-bottom: 14px; }
   p strong { color: var(--text); font-weight: 500; }
   a { color: var(--accent2); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.15s; }
@@ -135,6 +139,56 @@
     Some data for 2024 or even 2023 should be considered preliminary.
   </p>
 
+  <!-- ── LIMITATIONS ──────────────────────────────────────────────────────── -->
+  <h2>Limitations and Intended Use</h2>
+
+  <div class="callout">
+    <strong>This tool is designed for exploratory visualisation only.</strong>
+    It should not be used as the basis for clinical decisions, public health policy,
+    or media reporting without independent epidemiological review.
+  </div>
+
+  <p>
+    <strong>ASMR is not a death count.</strong> The age-standardised mortality rate
+    is a derived measure that adjusts for differences in age structure across
+    populations and over time. It is the appropriate metric for comparing trends
+    across countries and age groups, but it does not directly represent the number
+    of deaths. Users seeking absolute death counts should consult the source
+    databases listed in the Sources section.
+  </p>
+  <p>
+    <strong>Baseline exceedance is not confirmed excess mortality.</strong>
+    A week or year falling above the upper confidence interval indicates that observed
+    mortality was statistically unusual relative to the pre-pandemic trend — it does
+    not identify a cause, confirm that deaths were preventable, or constitute a
+    formal excess mortality estimate. Formal excess mortality analysis requires
+    additional modelling steps, validation against multiple baseline specifications,
+    and expert epidemiological interpretation.
+  </p>
+  <p>
+    <strong>Baselines are extrapolations.</strong> All baselines project a pre-pandemic
+    trend forward into years not used for fitting. Structural changes in mortality
+    trends — demographic shifts, healthcare improvements, long-term behavioural
+    changes — that occurred after the training period will not be captured. The
+    further the projection extends beyond the training window, the greater the
+    uncertainty.
+  </p>
+  <p>
+    <strong>Data quality varies across countries.</strong> Timeliness, completeness,
+    and coding practices differ substantially. Some countries have reporting lags
+    of several weeks; 2025 data and in some cases 2024 data should be considered
+    preliminary. The tool notes where data are incomplete, but users should apply
+    additional caution when making cross-country comparisons, particularly for
+    smaller countries with higher week-to-week statistical noise.
+  </p>
+  <p>
+    <strong>Suppressed baselines are not errors.</strong> For certain country-age
+    combinations — primarily small populations with very low death counts in younger
+    age groups — the baseline and CI are suppressed because the signal-to-noise
+    ratio is too low for a meaningful result. This is a deliberate quality gate,
+    not a data gap.
+  </p>
+
   <!-- ── VIEWS ─────────────────────────────────────────────────────────────── -->
   <h2>Three Views</h2>
   <p>The explorer offers three levels of temporal aggregation, each suited to a different question.</p>
@@ -181,7 +235,7 @@
     The fitted line is projected forward to produce the expected level in any given year.
     The user can select from several pre-defined baseline windows
     (e.g. 2011–19, 2012–19) to assess sensitivity to the choice of training period.
-    A <strong>Baseline Type</strong> toggle switches between two modes:
+    A <strong>Baseline Type</strong> toggle switches between three modes:
   </p>
   <p>
     <strong>Trend</strong> — the OLS regression line projected forward. Accounts for the
@@ -194,7 +248,6 @@
     (or seasonal, or weekly) values. Simpler and more transparent; useful as a cross-check
     and for audiences unfamiliar with trend adjustment. Because it ignores the largely declining trend,
     the mean baseline will likely appear too high for years well beyond the training window and too low for years preceding it.
-  .
   </p>
   <p>
     <strong>Log-linear</strong> — fits the regression on the natural logarithm of ASMR rather than
@@ -207,12 +260,13 @@
 
   <h3>Weekly baselines — EuroMOMO-style method</h3>
   <p>
-    A per-week (week specific) OLS regression on weekly ASMR is noisy because it treats each
-    week in isolation and strictly ignores the strong seasonal structure of mortality.As baselines
-    are projected far beyond the training period,they tend to get erratic and swell beyond plausibility.
-    Instead, the weekly baseline (kind of) follows the approach used by
-    <a href="https://www.euromomo.eu" target="_blank" rel="noopener">EuroMOMO</a>,
-    mitigating the problem.
+    A naive per-week OLS regression on weekly ASMR is noisy because it treats each
+    week in isolation and ignores the strong seasonal structure of mortality. Instead,
+    the weekly baseline follows a simplified
+    <a href="https://www.euromomo.eu" target="_blank" rel="noopener">EuroMOMO</a>-style
+    approach: decompose the signal into a seasonal shape and an annual trend level,
+    fit the trend on stable shoulder weeks only, and apply a Newey-West
+    autocorrelation-corrected standard error for the confidence interval.
   </p>
 
   <h3>Step 1 — Seasonal shape</h3>
@@ -236,25 +290,68 @@
     annual_level(year) = Σ ASMR(shoulder weeks) × shape_total / shape_shoulder
   </div>
 
-  <h3>Step 3 — Trend regression on annual levels</h3>
+  <h3>Step 3 — Trend model selection</h3>
   <p>
-    OLS is fit on the shoulder-derived annual levels across the baseline window,
-    giving a smooth trend line that captures the long-run decline in age-standardised
-    mortality.
+    Rather than always fitting a linear trend, the tool selects the best-fitting model
+    for each country-age-baseline combination using the
+    <strong>Bayesian Information Criterion (BIC)</strong>. Three candidate models are evaluated
+    against the shoulder-week residuals:
+  </p>
+  <div class="formula">
+    Flat mean:    baseline(year, week) = mean_level × shape[week] / shape_sum
+    Linear:       baseline(year, week) = (β₀ + β₁ × year) × shape[week] / shape_sum
+    Log-linear:   baseline(year, week) = exp(β₀ + β₁ × year) × shape[week] / shape_sum
+    <br>
+    <span class="comment">BIC = N · ln(SSR / N) + k · ln(N)
+    k = 1 for flat mean, k = 2 for linear and log-linear
+    N = number of shoulder-week observations across training years
+    Model with lowest BIC is selected</span>
+  </div>
+  <p>
+    BIC penalises model complexity, so the linear or log-linear trend only wins when
+    the data provide clear evidence of a trend over the baseline window — otherwise
+    a flat mean is preferred. This ensures model choice is driven by the data rather
+    than manual intervention. Note that slope clamping is still used as a
+    <em>suppression trigger</em> — if the BIC-winning model would require its slope
+    to be clamped to remain physically plausible when extrapolated, the entire slice
+    is suppressed rather than displayed in distorted form (see Suppression below).
+  </p>
+  <p>
+    BIC selection is performed <strong>once per slice</strong> — where a slice is a
+    unique combination of country, age group, and baseline window. The winning model
+    is then applied uniformly across every week and every year in that slice. There
+    is no per-week or per-year model switching. For example, if BIC selects log-linear
+    for Germany all ages with the 2015–19 window, the Trend tab shows a log-linear
+    projection for every week from the chart start through to 2025.
+  </p>
+  <p>
+    The <strong>Mean</strong> and <strong>Log-linear</strong> tabs always show those
+    specific models regardless of BIC, allowing direct comparison with the
+    data-selected Trend baseline.
+  </p>
+  <p>
+    When the BIC-winning model's slope is severe enough to project the baseline
+    to implausible levels outside the training window — detected when extrapolation
+    would require clamping the slope — the baseline and CI for that slice are
+    suppressed entirely rather than shown in a misleading form.
   </p>
 
   <h3>Step 4 — Weekly prediction</h3>
   <p>
-    The predicted weekly baseline for any year and week is the projected annual
-    level scaled by the week's share of the seasonal shape:
+    The predicted weekly baseline for any year and week is the BIC-selected model's
+    projected annual level, scaled by the week's share of the seasonal shape:
   </p>
   <div class="formula">
-    baseline(year, week) = reg.predict(year) × shape[week] / shape_sum
+    baseline(year, week) = level(year) × shape[week] / shape_sum
+    <br>
+    <span class="comment">level(year) = mean_level              (if flat model selected)
+               = β₀ + β₁ × year          (if linear model selected)
+               = exp(β₀ + β₁ × year)     (if log-linear model selected)</span>
   </div>
   <p>
-    This means the <em>shape</em> of the expected seasonal curve is always drawn
-    from the stable 2015–19 reference period, while its <em>level</em> follows
-    the long-run trend projection.
+    The <em>shape</em> of the expected seasonal curve is always drawn from the stable
+    2015–19 reference period, while its <em>level</em> follows whichever trend model
+    BIC selected for that slice.
   </p>
 
   <!-- ── CI ────────────────────────────────────────────────────────────────── -->
@@ -282,53 +379,87 @@
 
   <h3>Weekly CI</h3>
   <p>
-    The weekly CI uses the same prediction interval formula and leverage structure.
-    Rather than a single regression SE, however, each week-of-year carries its own
-    <strong>per-week (week specific) residual SE</strong>, computed from the residuals
-    (observed ASMR − predicted baseline) for that week across all training years.
-    This naturally produces wide bands for volatile winter weeks and narrow bands
-    for stable shoulder weeks — reflecting the true epidemiological uncertainty
-    of each part of the year.
+    The weekly CI is a <strong>flat-width band</strong> — constant across all 52 weeks
+    and all years — derived from pooled shoulder-week residuals using a
+    <strong>Newey-West heteroskedasticity and autocorrelation consistent (HAC) standard error</strong>.
+  </p>
+
+  <h4>Why shoulder weeks only</h4>
+  <p>
+    The SE is estimated exclusively from residuals in the stable shoulder weeks
+    (W15–26 and W35–46) — the same weeks used to estimate the annual level in Step 2.
+    This mirrors the EuroMOMO approach: shoulder weeks are the least volatile part of
+    the year, so their residuals give the cleanest measure of model fit. The resulting CI
+    is intentionally calibrated to stable-season variation. Weeks outside this range —
+    including winter flu peaks — that exceed the upper bound are flagged as genuine
+    excess, not absorbed by a wider seasonal envelope.
+  </p>
+
+  <h4>Newey-West HAC standard error</h4>
+  <p>
+    Weekly residuals within a year are serially autocorrelated — an unusually high week
+    tends to be followed by another high week. Ignoring this would overstate the effective
+    sample size and produce a CI that is too narrow. The Newey-West estimator corrects for
+    this by computing a weighted sum of lagged autocovariances using the Bartlett kernel:
   </p>
   <div class="formula">
-    CI(year, week) = baseline ± t(n−3) · SE_week · √(1 + 1/n + (year − year̄)² / Sxx)
+    LRV = γ(0) + 2 · Σ_{l=1}^{m} (1 − l/(m+1)) · γ(l)
     <br>
-    <span class="comment">SE_week = per-week residual SE from EuroMOMO model fit
-    t(n−3) rather than t(n−2): one additional df consumed by
-    estimating the 2015–19 seasonal shape before computing residuals</span>
+    γ(l) = (1/N) · Σ_{t>l} e_t · e_{t−l}     (sample autocovariance at lag l)
+    <br>
+    SE_NW = √(LRV)
+    <br>
+    <span class="comment">Bandwidth m = floor(4 · (N/100)^(2/9))  — Andrews (1991) rule
+    N = number of shoulder-week observations across training years (typically 120)
+    For N = 120: m = 4</span>
   </div>
   <p>
-    The per-week SE values are smoothed with a short circular moving average
-    (5-week window for age 15–44, 3-week for all others) to remove estimation
-    noise from the visual appearance of the CI band, without affecting significance
-    conclusions (much). Circular wrapping at W52→W01 prevents a discontinuity at year boundaries.
+    The resulting SE is larger than the naive pooled SE by a factor of approximately
+    1.07–1.55× depending on the autocorrelation structure of the slice. The large-sample
+    critical value t(∞) = 1.96 is used; with N ≈ 120 the difference from t(118) is negligible.
   </p>
+
+  <h4>CI formula</h4>
+  <div class="formula">
+    hw = SE_NW × 1.96
+    lo = baseline × exp(−hw / baseline)
+    hi = baseline × exp(+hw / baseline)
+    <br>
+    <span class="comment">Delta-method log-space bounds guarantee lo > 0 and
+    produce a slightly asymmetric interval (upper stretches further than
+    lower compresses). For typical hw values the asymmetry is small.</span>
+  </div>
   <p>
-    The weekly CI uses a <strong>fixed-width</strong> interval — the leverage term
-    <em>(x − x̄)²/Sxx</em> is omitted. The justification is that the per-week SE
-    is estimated cross-sectionally (each week-of-year independently across training
-    years), not as a time-series forecast. Extrapolation uncertainty is already
-    embedded in the residuals; applying a leverage penalty on top would double-count
-    it. The formula simplifies to:
+    The CI is <strong>fixed-width</strong> — neither a leverage penalty nor a
+    per-week scaling factor is applied. The leverage-inflated prediction interval
+    used in the annual and seasonal views is appropriate there because each data
+    point is a single annual aggregate and extrapolation uncertainty genuinely grows
+    over time. For the weekly view, where the SE is estimated from pooled cross-sectional
+    residuals at large N, adding leverage would double-count the already-embedded
+    extrapolation uncertainty and produce bands that balloon without justification
+    as the chart is scrolled further from the training window.
+  </p>
+
+  <h4>Log-linear CI</h4>
+  <p>
+    For the log-linear baseline tab, residuals are computed in log space
+    (log(observed) − log(predicted)) before applying the Newey-West estimator.
+    This gives a dimensionless SE that is applied symmetrically in log space:
   </p>
   <div class="formula">
-    CI(year, week) = baseline ± t(n−3) · SE_week · √(1 + 1/n)
+    lhw = SE_NW_log × 1.96
+    lo  = exp(log_baseline − lhw)
+    hi  = exp(log_baseline + lhw)
+    <br>
+    <span class="comment">Equivalent to a proportional CI: hi ≈ baseline × exp(lhw)
+    For SE_NW_log ≈ 0.05, hi ≈ baseline × 1.05 — a 5% upper bound above baseline</span>
   </div>
+
+  <h4>Minimum CI width (floor)</h4>
   <p>
-    Because mortality rates must be non-negative, the bounds are computed via the
-    <strong>delta method</strong> (log-space back-transform) rather than simple
-    subtraction. Expressing the half-width as a fraction of the predicted value
-    <em>r = hw / predicted</em>, the bounds become:
-  </p>
-  <div class="formula">
-    lo = predicted × exp(−r)
-    hi = predicted × exp(+r)
-  </div>
-  <p>
-    This guarantees lo &gt; 0 always and produces a slightly asymmetric interval
-    (the upper band stretches further than the lower band compresses). For typical
-    values of <em>r</em> the result is nearly symmetric; the asymmetry only becomes
-    visible for high-variance weeks in small age groups or short baseline windows.
+    A minimum half-width of 5% of the mean shoulder ASMR is applied. This prevents
+    the CI from becoming visually imperceptible for very large, stable populations
+    (notably the United States all-ages series) where the NW SE is genuinely very small.
   </p>
 
   <div class="callout">
@@ -338,6 +469,33 @@
     intended for exploratory visualisation and should not be treated as formal
     epidemiological excess mortality estimates.
   </div>
+
+  <h3>Weekly baseline and CI suppression</h3>
+  <p>
+    The weekly baseline and CI are suppressed for a given country-age slice when
+    the signal-to-noise ratio is too low to produce a meaningful result. Two conditions
+    trigger suppression:
+  </p>
+  <p>
+    <strong>High CV.</strong> If the Newey-West half-width exceeds 65% of the mean
+    shoulder ASMR (coefficient of variation &gt; 0.65), the CI is wider than the
+    signal itself and cannot usefully distinguish excess from noise. This affects
+    all age groups for Liechtenstein, the 15–44 and 45–64 groups for Iceland and Malta,
+    and the 15–44 group for Cyprus and Luxembourg.
+  </p>
+  <p>
+    <strong>Slope clamping triggered.</strong> BIC may correctly select a linear or
+    log-linear trend within the training window that, when extrapolated, projects
+    the baseline to implausible levels outside it — for example to near-zero values
+    for a steeply declining small-population series. When the fitted slope would
+    require clamping to remain within physically plausible bounds, the entire slice
+    is suppressed rather than rendered with a distorted baseline. This currently
+    affects Estonia 15–44.
+  </p>
+  <p>
+    In both cases the baseline line is also suppressed, not just the CI bands —
+    a misleading trend line is more harmful than no trend line.
+  </p>
 
   <!-- ── BASELINE WINDOWS ───────────────────────────────────────────────────── -->
   <h2>Baseline Windows</h2>
