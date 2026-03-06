@@ -236,6 +236,13 @@
           <div class="tab-group" id="baseline-tabs"></div>
         </div>
         <div class="control-group">
+          <label>View</label>
+          <div class="tab-group">
+            <div class="tab-btn active" id="view-summed"   onclick="setViewMode('summed')">Summed</div>
+            <div class="tab-btn"        id="view-separate" onclick="setViewMode('separate')">Separate</div>
+          </div>
+        </div>
+        <div class="control-group">
           <label>Display</label>
           <div class="tab-group">
             <div class="toggle-btn on" id="toggle-ci"       onclick="toggleOpt('ci')">CI Band</div>
@@ -265,8 +272,9 @@
 
     <p class="disclaimer">
       ASMR computed using ESP2013 standard. Causes coded to ICD-10 chapters. 2023 data may be preliminary for some countries.
-      Selecting multiple causes sums their rates. Linear trend baseline (OLS) fitted over the selected training window (end year always 2019).
-      Baseline and CI are suppressed for a country when any selected cause has zero or missing values within the training period.
+      In <strong>Summed</strong> view, multiple selected causes are added together per country. In <strong>Separate</strong> view, each cause is plotted as its own line, coloured by cause.
+      Linear trend baseline (OLS) fitted over the selected training window (end year always 2019).
+      Baseline and CI are suppressed for a series when any selected cause has zero or missing values within the training period.
     </p>
   </div>
 </div>
@@ -281,7 +289,28 @@
 </footer>
 
 <script>
-const COLORS = ['#e8c97a','#7a9ee8','#e87a7a','#7ae8b0','#c77ae8','#e8a07a','#7ae8e8','#e8e87a','#a8e87a','#e87ac0','#7ac0e8','#e8c77a','#9ae87a','#e87aaa','#7ab0e8','#e8d07a','#7ae8c0','#e89a7a','#87e87a','#e87ab0','#7aaae8','#e8e07a','#70e87a','#e87ab8','#7aa8e8','#e8c47a','#7ae890','#e8a87a'];
+// ── Stable country colour system ─────────────────────────────────────────────
+// Colours assigned by hashing the country name so adding new countries never
+// shifts the colours of existing ones. Pinned overrides for Sweden and Israel.
+const COUNTRY_COLOR_PINS = {
+  'Sweden': '#6ed687',
+  'Israel': '#6aaff5',
+};
+const COUNTRY_PALETTE = [
+  '#e8c97a','#e87a7a','#c77ae8','#e8a07a','#7ae8e8','#a8e87a',
+  '#e87ac0','#e8c77a','#e87aaa','#e8d07a','#e89a7a','#e87ab0',
+  '#e8e07a','#e87ab8','#e8c47a','#e8a87a','#e87aa0','#e8b07a',
+  '#f0a060','#e86080','#d4609e','#e8d890','#f07850','#e8b890',
+];
+function strHash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; }
+  return h;
+}
+function getCountryColor(name) {
+  if (COUNTRY_COLOR_PINS[name]) return COUNTRY_COLOR_PINS[name];
+  return COUNTRY_PALETTE[strHash(name) % COUNTRY_PALETTE.length];
+}
 
 const BASELINES = [
   { key: 'bl_2013_19', label: '2013–19', blStart: 2013, blEnd: 2019 },
@@ -300,6 +329,7 @@ let selAge       = 'all ages';
 let selBaseline  = 'bl_2013_19';
 let showCI       = true;
 let showBaseline = true;
+let viewMode     = 'summed'; // 'summed' | 'separate'
 let chart        = null;
 
 // ── Load ──────────────────────────────────────────────────────────────────────
@@ -399,13 +429,22 @@ function predInterval(reg, x) {
 function buildCountryChips() {
   const el = document.getElementById('country-chips');
   el.innerHTML = '';
-  COUNTRIES.forEach((c, i) => {
-    const col  = COLORS[i % COLORS.length];
+  COUNTRIES.forEach((c) => {
+    const col  = getCountryColor(c);
     const chip = document.createElement('div');
     chip.className = 'chip' + (selCountries.has(c) ? ' active' : '');
     chip.textContent = c;
     if (selCountries.has(c)) applyCountryChipStyle(chip, col);
     chip.onclick = () => {
+      if (viewMode === 'separate') {
+        // Radio behaviour: switch to this country
+        if (selCountries.has(c)) return;
+        selCountries = new Set([c]);
+        buildCountryChips();
+        buildChart();
+        return;
+      }
+      // Multi-select behaviour (summed mode)
       if (selCountries.has(c)) {
         if (selCountries.size === 1) return;
         selCountries.delete(c);
@@ -431,13 +470,23 @@ function applyCountryChipStyle(chip, col) {
 function buildCauseChips() {
   const el = document.getElementById('cause-chips');
   el.innerHTML = '';
-  CAUSES.forEach(c => {
+  CAUSES.forEach((c, i) => {
+    const causeCol = CAUSE_COLORS[i % CAUSE_COLORS.length];
     const chip = document.createElement('div');
-    chip.className = 'chip' + (selCauses.has(c) ? ' active-cause' : '');
+    const isActive = selCauses.has(c);
+    chip.className = 'chip' + (isActive ? ' active-cause' : '');
     chip.textContent = c;
+    if (isActive) applyCauseChipStyle(chip, causeCol);
     chip.onclick = () => {
-      if (selCauses.has(c)) { selCauses.delete(c); chip.classList.remove('active-cause'); }
-      else                  { selCauses.add(c);    chip.classList.add('active-cause');    }
+      if (selCauses.has(c)) {
+        selCauses.delete(c);
+        chip.classList.remove('active-cause');
+        chip.style.borderColor = chip.style.color = chip.style.background = '';
+      } else {
+        selCauses.add(c);
+        chip.classList.add('active-cause');
+        applyCauseChipStyle(chip, causeCol);
+      }
       updateCauseCountLabel();
       buildChart();
     };
@@ -446,9 +495,18 @@ function buildCauseChips() {
   updateCauseCountLabel();
 }
 
+function applyCauseChipStyle(chip, col) {
+  chip.style.borderColor = col;
+  chip.style.color = col;
+  chip.style.background = col + '1a';
+}
+
 function updateCauseCountLabel() {
   const lbl = document.getElementById('cause-count-label');
-  lbl.textContent = selCauses.size > 1 ? `(${selCauses.size} summed)` : selCauses.size === 1 ? '(1 selected)' : '(none)';
+  if (selCauses.size === 0)      lbl.textContent = '(none)';
+  else if (selCauses.size === 1) lbl.textContent = '(1 selected)';
+  else if (viewMode === 'separate') lbl.textContent = `(${selCauses.size} separate)`;
+  else                           lbl.textContent = `(${selCauses.size} summed)`;
 }
 
 // ── Baseline tabs ─────────────────────────────────────────────────────────────
@@ -476,9 +534,21 @@ function toggleOpt(k) {
   buildChart();
 }
 
-// ── Data ──────────────────────────────────────────────────────────────────────
+function setViewMode(mode) {
+  viewMode = mode;
+  document.getElementById('view-summed').classList.toggle('active', mode === 'summed');
+  document.getElementById('view-separate').classList.toggle('active', mode === 'separate');
+  if (mode === 'separate' && selCountries.size > 1) {
+    // Keep only the first selected country
+    selCountries = new Set([Array.from(selCountries)[0]]);
+  }
+  buildCountryChips();
+  buildCauseChips();
+  updateCauseCountLabel();
+  buildChart();
+}
 
-function getCountryColor(country) { return COLORS[COUNTRIES.indexOf(country) % COLORS.length]; }
+// ── Data ──────────────────────────────────────────────────────────────────────
 
 // Build observed year→value map for a country.
 // Sum ALL selected causes for each year (including zeros/missing = 0).
@@ -555,6 +625,58 @@ function buildCountrySeries(country) {
   return { obs, bm, bl, bh, canBL: eligible };
 }
 
+// Build observed year→value map for a country + single cause.
+function buildObsMapForCause(country, cause) {
+  const result = {};
+  allData.forEach(r => {
+    if (r.country === country && r.age === selAge && r.cause === cause) {
+      result[r.year] = +r.asmr.toFixed(4);
+    }
+  });
+  return result;
+}
+
+function canUseBaselineForMap(obsMap) {
+  const def = BASELINES.find(d => d.key === selBaseline);
+  if (!def) return false;
+  for (let yr = def.blStart; yr <= def.blEnd; yr++) {
+    if (obsMap[yr] == null || obsMap[yr] <= 0) return false;
+  }
+  return true;
+}
+
+function buildSeriesFromMap(obsMap) {
+  const def = BASELINES.find(d => d.key === selBaseline);
+  const eligible = canUseBaselineForMap(obsMap);
+  let reg = null;
+  if (eligible) {
+    const trainX = [], trainY = [];
+    for (let yr = def.blStart; yr <= def.blEnd; yr++) {
+      if (obsMap[yr] != null) { trainX.push(yr); trainY.push(obsMap[yr]); }
+    }
+    reg = linearRegression(trainX, trainY);
+  }
+  const obs = [], bm = [], bl = [], bh = [];
+  YEARS.forEach(yr => {
+    obs.push(obsMap[yr] ?? null);
+    if (reg) {
+      const p = predInterval(reg, yr);
+      bm.push(+p.mean.toFixed(4));
+      bl.push(+p.lo.toFixed(4));
+      bh.push(+p.hi.toFixed(4));
+    } else {
+      bm.push(null); bl.push(null); bh.push(null);
+    }
+  });
+  return { obs, bm, bl, bh, canBL: eligible };
+}
+
+// Colour palette for causes in separate mode (distinct from country colours)
+const CAUSE_COLORS = ['#e8c97a','#7a9ee8','#e87a7a','#7ae8b0','#c77ae8','#e8a07a','#7ae8e8','#e8e87a','#a8e87a','#e87ac0'];
+function getCauseColor(cause) {
+  return CAUSE_COLORS[CAUSES.indexOf(cause) % CAUSE_COLORS.length];
+}
+
 // ── Chart ─────────────────────────────────────────────────────────────────────
 
 function buildChart() {
@@ -571,142 +693,238 @@ function buildChart() {
   canvas.style.display = 'block';
   emptyState.style.display = 'none';
 
-  const labels   = YEARS.map(String);
-  const datasets = [];
+  const labels    = YEARS.map(String);
+  const datasets  = [];
   const countries = Array.from(selCountries);
-
-  countries.forEach(country => {
-    const col = getCountryColor(country);
-    const s   = buildCountrySeries(country);
-
-    if (s.canBL) {
-      // CI band — always included in datasets so tooltip can read lo/hi,
-      // but made invisible when showCI is off
-      datasets.push({
-        label: country + ' CI Upper', data: s.bh,
-        borderColor: 'transparent',
-        backgroundColor: showCI ? col + '22' : 'transparent',
-        fill: '+1', pointRadius: 0, tension: 0.3, order: 10
-      });
-      datasets.push({
-        label: country + ' CI Lower', data: s.bl,
-        borderColor: 'transparent', backgroundColor: 'transparent',
-        fill: false, pointRadius: 0, tension: 0.3, order: 10
-      });
-
-      // Baseline trend line
-      datasets.push({
-        label: country + ' Baseline', data: s.bm,
-        borderColor: showBaseline ? col + '88' : 'transparent',
-        borderWidth: 1.5, borderDash: [4, 3],
-        pointRadius: showBaseline ? 4 : 0,
-        pointBackgroundColor: col + '88',
-        tension: 0.3, fill: false, order: 5
-      });
-    }
-
-    // Observed line (always on top)
-    datasets.push({
-      label: country, data: s.obs,
-      borderColor: col, borderWidth: 2,
-      pointRadius: 5, pointHoverRadius: 7,
-      pointBackgroundColor: col,
-      tension: 0.3, fill: false, order: 1
-    });
-  });
+  const causes    = Array.from(selCauses);
 
   const def      = BASELINES.find(d => d.key === selBaseline);
   const ageLabel = selAge === 'all ages' ? 'All Ages' : 'Age ' + selAge;
-  const causeLabel = selCauses.size === 1
-    ? Array.from(selCauses)[0]
-    : selCauses.size + ' causes (summed)';
 
-  document.getElementById('chart-title').textContent =
-    countries.length > 1
-      ? ageLabel + ' · ' + causeLabel
-      : countries[0] + ' · ' + ageLabel + ' · ' + causeLabel;
-  document.getElementById('chart-sub').textContent =
-    'ASMR per 100,000 · Annual · ' + ageLabel + ' · Trend baseline ' + def.label;
+  if (viewMode === 'summed' || causes.length === 1) {
+    // ── SUMMED MODE (original behaviour) ──────────────────────────────────
+    const causeLabel = causes.length === 1 ? causes[0] : causes.length + ' causes (summed)';
 
-  const ctx = canvas.getContext('2d');
-  if (chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1c2030',
-          borderColor: '#252a3a',
-          borderWidth: 1,
-          titleColor: '#9ca3af',
-          bodyColor: '#e8eaf0',
-          titleFont: { family: 'DM Mono', size: 10 },
-          bodyFont: { family: 'DM Mono', size: 10 },
-          padding: 10,
-          callbacks: {
-            title: items => items[0]?.label ?? '',
-            label: () => null,
-            afterBody(items) {
-              if (!items.length) return [];
-              const idx = items[0].dataIndex;
-              const dsMap = {};
-              items[0].chart.data.datasets.forEach(ds => { dsMap[ds.label] = ds.data; });
+    document.getElementById('chart-title').textContent =
+      countries.length > 1
+        ? ageLabel + ' · ' + causeLabel
+        : countries[0] + ' · ' + ageLabel + ' · ' + causeLabel;
+    document.getElementById('chart-sub').textContent =
+      'ASMR per 100,000 · Annual · ' + ageLabel + ' · Trend baseline ' + def.label;
 
-              const lines = [];
+    countries.forEach(country => {
+      const col = getCountryColor(country);
+      const s   = buildCountrySeries(country);
+
+      if (s.canBL) {
+        datasets.push({
+          label: country + ' CI Upper', data: s.bh,
+          borderColor: 'transparent',
+          backgroundColor: showCI ? col + '22' : 'transparent',
+          fill: '+1', pointRadius: 0, tension: 0.3, order: 10
+        });
+        datasets.push({
+          label: country + ' CI Lower', data: s.bl,
+          borderColor: 'transparent', backgroundColor: 'transparent',
+          fill: false, pointRadius: 0, tension: 0.3, order: 10
+        });
+        datasets.push({
+          label: country + ' Baseline', data: s.bm,
+          borderColor: showBaseline ? col + '88' : 'transparent',
+          borderWidth: 1.5, borderDash: [4, 3],
+          pointRadius: showBaseline ? 4 : 0,
+          pointBackgroundColor: col + '88',
+          tension: 0.3, fill: false, order: 5
+        });
+      }
+
+      datasets.push({
+        label: country, data: s.obs,
+        borderColor: col, borderWidth: 2,
+        pointRadius: 5, pointHoverRadius: 7,
+        pointBackgroundColor: col,
+        tension: 0.3, fill: false, order: 1
+      });
+    });
+
+    const ctx = canvas.getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: buildChartOptions(countries, null)
+    });
+
+  } else {
+    // ── SEPARATE MODE ─────────────────────────────────────────────────────
+    const causeLabel = causes.length + ' causes (separate)';
+    const multiCountry = countries.length > 1;
+
+    document.getElementById('chart-title').textContent =
+      multiCountry
+        ? ageLabel + ' · ' + causeLabel
+        : countries[0] + ' · ' + ageLabel + ' · ' + causeLabel;
+    document.getElementById('chart-sub').textContent =
+      'ASMR per 100,000 · Annual · ' + ageLabel + ' · Trend baseline ' + def.label;
+
+    // In separate mode, colour by cause. If multiple countries, use dashes to
+    // distinguish them (solid = first country, dashed = second, etc.).
+    const dashPatterns = [[], [6,3], [2,3], [8,3,2,3]];
+
+    countries.forEach((country, ci) => {
+      causes.forEach(cause => {
+        const col   = getCauseColor(cause);
+        const dash  = dashPatterns[ci % dashPatterns.length];
+        const seriesLabel = multiCountry ? `${country} · ${cause}` : cause;
+        const obsMap = buildObsMapForCause(country, cause);
+        const s      = buildSeriesFromMap(obsMap);
+
+        if (s.canBL) {
+          datasets.push({
+            label: seriesLabel + ' CI Upper', data: s.bh,
+            borderColor: 'transparent',
+            backgroundColor: showCI ? col + '18' : 'transparent',
+            fill: '+1', pointRadius: 0, tension: 0.3, order: 10
+          });
+          datasets.push({
+            label: seriesLabel + ' CI Lower', data: s.bl,
+            borderColor: 'transparent', backgroundColor: 'transparent',
+            fill: false, pointRadius: 0, tension: 0.3, order: 10
+          });
+          datasets.push({
+            label: seriesLabel + ' Baseline', data: s.bm,
+            borderColor: showBaseline ? col + '88' : 'transparent',
+            borderWidth: 1.5, borderDash: dash.length ? [...dash] : [4,3],
+            pointRadius: showBaseline ? 3 : 0,
+            pointBackgroundColor: col + '88',
+            tension: 0.3, fill: false, order: 5
+          });
+        }
+
+        datasets.push({
+          label: seriesLabel, data: s.obs,
+          borderColor: col, borderWidth: 2,
+          borderDash: dash,
+          pointRadius: 4, pointHoverRadius: 6,
+          pointBackgroundColor: col,
+          tension: 0.3, fill: false, order: 1,
+          _cause: cause, _country: country
+        });
+      });
+    });
+
+    const ctx = canvas.getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: buildChartOptions(countries, causes)
+    });
+  }
+}
+
+function buildChartOptions(countries, causes) {
+  // causes === null → summed mode tooltip; causes array → separate mode tooltip
+  const isSeparate = causes !== null && causes.length > 1;
+
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1c2030',
+        borderColor: '#252a3a',
+        borderWidth: 1,
+        titleColor: '#9ca3af',
+        bodyColor: '#e8eaf0',
+        titleFont: { family: 'DM Mono', size: 10 },
+        bodyFont: { family: 'DM Mono', size: 10 },
+        padding: 10,
+        callbacks: {
+          title: items => items[0]?.label ?? '',
+          label: () => null,
+          afterBody(items) {
+            if (!items.length) return [];
+            const idx = items[0].dataIndex;
+            const dsMap = {};
+            items[0].chart.data.datasets.forEach(ds => { dsMap[ds.label] = ds.data; });
+
+            const lines = [];
+
+            if (!isSeparate) {
+              // Summed mode: one block per country
               countries.forEach(country => {
                 const obs = dsMap[country]?.[idx];
                 const bm  = dsMap[country + ' Baseline']?.[idx];
                 const lo  = dsMap[country + ' CI Lower']?.[idx];
                 const hi  = dsMap[country + ' CI Upper']?.[idx];
-
                 if (obs == null) return;
-
                 if (bm == null) {
                   lines.push(` ${country}  ${obs.toFixed(2)}`);
                 } else {
                   const excess = obs - bm;
                   const sign   = excess >= 0 ? '+' : '';
                   if (lo != null && hi != null) {
-                    const exLo = obs - hi;
-                    const exHi = obs - lo;
-                    lines.push(
-                      ` ${country}  ${obs.toFixed(2)}`,
-                      `  Excess: ${sign}${excess.toFixed(2)} [${exLo.toFixed(2)}, ${exHi.toFixed(2)}]`
-                    );
+                    const exLo = obs - hi, exHi = obs - lo;
+                    lines.push(` ${country}  ${obs.toFixed(2)}`, `  Excess: ${sign}${excess.toFixed(2)} [${exLo.toFixed(2)}, ${exHi.toFixed(2)}]`);
                   } else {
                     lines.push(` ${country}  ${obs.toFixed(2)}`, `  Excess: ${sign}${excess.toFixed(2)}`);
                   }
                 }
                 if (countries.length > 1) lines.push('');
               });
-
-              while (lines.length && lines[lines.length - 1] === '') lines.pop();
-              return lines;
+            } else {
+              // Separate mode: one block per country, then per cause
+              countries.forEach((country, ci) => {
+                if (ci > 0) lines.push('');
+                if (countries.length > 1) lines.push(` ${country}`);
+                causes.forEach(cause => {
+                  const seriesLabel = countries.length > 1 ? `${country} · ${cause}` : cause;
+                  const obs = dsMap[seriesLabel]?.[idx];
+                  const bm  = dsMap[seriesLabel + ' Baseline']?.[idx];
+                  const lo  = dsMap[seriesLabel + ' CI Lower']?.[idx];
+                  const hi  = dsMap[seriesLabel + ' CI Upper']?.[idx];
+                  if (obs == null) return;
+                  const shortCause = cause.replace(/^\([^)]+\)\s*/, '');
+                  if (bm == null) {
+                    lines.push(`  ${shortCause}  ${obs.toFixed(2)}`);
+                  } else {
+                    const excess = obs - bm;
+                    const sign   = excess >= 0 ? '+' : '';
+                    if (lo != null && hi != null) {
+                      const exLo = obs - hi, exHi = obs - lo;
+                      lines.push(`  ${shortCause}  ${obs.toFixed(2)}`, `   Excess: ${sign}${excess.toFixed(2)} [${exLo.toFixed(2)}, ${exHi.toFixed(2)}]`);
+                    } else {
+                      lines.push(`  ${shortCause}  ${obs.toFixed(2)}`, `   Excess: ${sign}${excess.toFixed(2)}`);
+                    }
+                  }
+                });
+              });
             }
+
+            while (lines.length && lines[lines.length - 1] === '') lines.pop();
+            return lines;
           }
         }
+      }
+    },
+    scales: {
+      x: {
+        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxRotation: 45, autoSkip: true, autoSkipPadding: 12 },
+        grid: { color: 'rgba(37,42,58,0.6)', drawTicks: false },
+        border: { color: '#252a3a' }
       },
-      scales: {
-        x: {
-          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxRotation: 45, autoSkip: true, autoSkipPadding: 12 },
-          grid: { color: 'rgba(37,42,58,0.6)', drawTicks: false },
-          border: { color: '#252a3a' }
-        },
-        y: {
-          ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 8, callback: v => v?.toFixed(1) },
-          grid: { color: 'rgba(37,42,58,0.6)', drawTicks: false },
-          border: { color: '#252a3a' },
-          title: { display: true, text: 'Deaths / 100k', color: '#6b7280', font: { family: 'DM Mono', size: 10 } }
-        }
-      },
-      animation: { duration: 300, easing: 'easeInOutQuart' }
-    }
-  });
+      y: {
+        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 8, callback: v => v?.toFixed(1) },
+        grid: { color: 'rgba(37,42,58,0.6)', drawTicks: false },
+        border: { color: '#252a3a' },
+        title: { display: true, text: 'Deaths / 100k', color: '#6b7280', font: { family: 'DM Mono', size: 10 } }
+      }
+    },
+    animation: { duration: 300, easing: 'easeInOutQuart' }
+  };
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

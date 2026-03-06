@@ -307,8 +307,30 @@
 <script>
 // Populated dynamically from CSV
 let COUNTRIES = [];
-const COLORS = ['#e8c97a','#7a9ee8','#e87a7a','#7ae8b0','#c77ae8','#e8a07a','#7ae8e8','#e8e87a','#a8e87a','#e87ac0','#7ac0e8','#e8c77a','#9ae87a','#e87aaa','#7ab0e8','#e8d07a','#7ae8c0','#e89a7a','#87e87a','#e87ab0','#7aaae8','#e8e07a','#70e87a','#e87ab8','#7aa8e8','#e8c47a','#7ae890','#e8a87a','#7ae8a8','#e87aa0','#7ac8e8'];
-const cc = c => COLORS[COUNTRIES.indexOf(c) % COLORS.length];
+
+// ── Stable country colour system ─────────────────────────────────────────────
+// Colours assigned by hashing the country name so adding new countries never
+// shifts the colours of existing ones. Pinned overrides for Sweden and Israel.
+const COUNTRY_COLOR_PINS = {
+  'Sweden': '#6ed687',
+  'Israel': '#6aaff5',
+};
+const COUNTRY_PALETTE = [
+  '#e8c97a','#e87a7a','#c77ae8','#e8a07a','#7ae8e8','#a8e87a',
+  '#e87ac0','#e8c77a','#e87aaa','#e8d07a','#e89a7a','#e87ab0',
+  '#e8e07a','#e87ab8','#e8c47a','#e8a87a','#e87aa0','#e8b07a',
+  '#f0a060','#e86080','#d4609e','#e8d890','#f07850','#e8b890',
+];
+function strHash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; }
+  return h;
+}
+function getCountryColor(name) {
+  if (COUNTRY_COLOR_PINS[name]) return COUNTRY_COLOR_PINS[name];
+  return COUNTRY_PALETTE[strHash(name) % COUNTRY_PALETTE.length];
+}
+const cc = getCountryColor;
 
 // Populated dynamically after CSV load: keys are "Country|age"
 const incomplete2025Keys = new Set();

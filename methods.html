@@ -378,6 +378,15 @@
     of death simultaneously. When multiple causes are selected, their rates are
     <strong>summed</strong> for each country and year to produce a single composite series.
   </p>
+  <p>
+    In <strong>Separate</strong> mode, users can instead view each selected cause as its
+    own independent series. A single country is shown at a time, with each cause plotted
+    as a distinct line coloured to match its selection chip — making it straightforward
+    to compare the trajectory and magnitude of individual causes, and to see which
+    contribute most to any period of excess mortality. The baseline and confidence
+    interval are computed independently for each cause series using the same OLS trend
+    method, and are suppressed per-cause where the training data are zero or incomplete.
+  </p>
 
   <h3>Baseline and confidence interval</h3>
   <p>

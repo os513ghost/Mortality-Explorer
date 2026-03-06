@@ -6,6 +6,7 @@
 <title>Sub-National Life Expectancy</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#0d0f14;--surface:#151820;--surface2:#1c2030;--border:#252a3a;--text:#e8eaf0;--text-dim:#6b7280;--text-mid:#9ca3af;--accent:#e8c97a;--accent2:#7a9ee8;}
@@ -82,6 +83,11 @@
   .tt-nodata{font-size:.67rem;color:var(--text-dim);font-style:italic;}
 
   .disclaimer{font-size:.62rem;color:var(--text-dim);line-height:1.5;padding:6px 2px 14px;flex-shrink:0;}
+
+  .dl-btn-wrap{display:flex;justify-content:flex-end;padding:0 2px 14px;flex-shrink:0;}
+  .dl-btn{font-family:'DM Mono',monospace;font-size:.63rem;padding:5px 12px;border-radius:5px;border:1px solid var(--border);cursor:pointer;color:var(--text-dim);background:var(--surface2);transition:all .15s;display:flex;align-items:center;gap:6px;}
+  .dl-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .dl-btn:disabled{opacity:.5;cursor:default;}
   footer{text-align:center;padding:14px;color:var(--text-dim);font-size:.7rem;border-top:1px solid var(--border);flex-shrink:0;position:relative;z-index:1;}
 
   @media(max-width:900px){
@@ -197,6 +203,14 @@
       Regions with fewer than 5 training-year observations shown without baseline.
       Map geometry: Eurostat GISCO, NUTS 2021 classification.
     </p>
+    <div class="dl-btn-wrap">
+      <button class="dl-btn" id="dl-btn" onclick="downloadPNG()">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 1v7M3 5.5l3 3 3-3M1 10h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Save PNG
+      </button>
+    </div>
   </div>
 </div>
 <footer>
@@ -529,6 +543,46 @@ window.addEventListener('resize', () => {
     svgEl._W=W; svgEl._H=H;
   }, 200);
 });
+
+// ── PNG export ────────────────────────────────────────────────────────────────
+
+function downloadPNG() {
+  const btn = document.getElementById('dl-btn');
+  btn.disabled = true;
+  btn.textContent = 'Rendering…';
+
+  const header     = document.querySelector('header');
+  const disclaimer = document.querySelector('#app .disclaimer');
+  const container  = document.querySelector('.container');
+
+  const contRect = container.getBoundingClientRect();
+  const headRect = header.getBoundingClientRect();
+  const discRect = disclaimer.getBoundingClientRect();
+
+  const scrollX = window.scrollX, scrollY = window.scrollY;
+  const x = contRect.left + scrollX;
+  const y = headRect.top  + scrollY;
+  const w = contRect.width;
+  const h = discRect.bottom + scrollY - y;
+
+  html2canvas(document.body, {
+    x, y, width: w, height: h,
+    scale: 2,
+    backgroundColor: '#0d0f14',
+    useCORS: true,
+    logging: false,
+  }).then(canvas => {
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'life-expectancy.png';
+    a.click();
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 1v7M3 5.5l3 3 3-3M1 10h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Save PNG';
+  }).catch(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 1v7M3 5.5l3 3 3-3M1 10h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Save PNG';
+  });
+}
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 if (document.readyState==='complete') tryAutoLoad();
