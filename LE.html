@@ -73,6 +73,7 @@
   .map-note-item{display:flex;align-items:center;gap:5px;}
   .note-swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
 
+  /* ── Floating tooltip (desktop) ── */
   #tooltip{position:fixed;pointer-events:none;z-index:200;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:'DM Mono',monospace;font-size:.72rem;color:var(--text);line-height:1.75;max-width:280px;display:none;box-shadow:0 8px 32px rgba(0,0,0,.5);}
   .tt-name{font-size:.76rem;color:var(--accent);margin-bottom:5px;font-weight:500;font-family:'DM Sans',sans-serif;}
   .tt-row{font-size:.69rem;color:var(--text-mid);}
@@ -81,6 +82,21 @@
   .tt-excess.pos{color:#7ae8b0;}.tt-excess.neg{color:#e87a7a;}.tt-excess.neu{color:var(--text-mid);}
   .tt-nobl{font-size:.67rem;color:var(--text-dim);font-style:italic;margin-top:3px;}
   .tt-nodata{font-size:.67rem;color:var(--text-dim);font-style:italic;}
+
+  /* ── Bottom sheet (mobile tap info) ── */
+  #bottom-sheet{position:fixed;bottom:0;left:0;right:0;z-index:300;background:var(--surface2);border-top:1px solid var(--border);border-radius:16px 16px 0 0;padding:16px 20px 28px;transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:0 -8px 32px rgba(0,0,0,.5);}
+  #bottom-sheet.open{transform:translateY(0);}
+  .bs-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px;}
+  .bs-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--text-dim);font-size:1.1rem;cursor:pointer;line-height:1;padding:4px;}
+  .bs-close:hover{color:var(--text);}
+
+  /* ── Zoom reset button ── */
+  .zoom-btn{position:absolute;top:8px;right:8px;z-index:10;font-family:'DM Mono',monospace;font-size:.6rem;padding:4px 9px;border-radius:5px;border:1px solid var(--border);cursor:pointer;color:var(--text-dim);background:rgba(21,24,32,.85);transition:all .15s;backdrop-filter:blur(4px);}
+  .zoom-btn:hover{border-color:var(--accent);color:var(--accent);}
+  #map-svg-wrap{position:relative;}
+
+  /* ── Zoom hint ── */
+  .zoom-hint{font-size:.6rem;color:var(--text-dim);font-family:'DM Mono',monospace;padding:4px 0 0;opacity:.7;}
 
   .disclaimer{font-size:.62rem;color:var(--text-dim);line-height:1.5;padding:6px 2px 14px;flex-shrink:0;}
 
@@ -186,7 +202,9 @@
         </div>
       </div>
       <div class="map-body">
-        <div id="map-svg-wrap"></div>
+        <div id="map-svg-wrap">
+          <button class="zoom-btn" id="zoom-reset-btn" onclick="resetZoom()" style="display:none">⟲ Reset</button>
+        </div>
         <div class="legend-col">
           <div class="legend-label">Months</div>
           <div class="legend-inner" id="legend-inner">
@@ -196,6 +214,7 @@
         </div>
       </div>
       <div class="map-note" id="map-note"></div>
+      <div class="zoom-hint" id="zoom-hint"></div>
     </div>
     <p class="disclaimer">
       Baseline: linear OLS trend fitted over selected training window (end year 2019), projected forward.
@@ -223,6 +242,11 @@
   <a href="methods.html" style="color:var(--accent2);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s" onmouseover="this.style.borderBottomColor='var(--accent2)'" onmouseout="this.style.borderBottomColor='transparent'">Methods</a>
 </footer>
 <div id="tooltip"></div>
+<div id="bottom-sheet">
+  <div class="bs-handle"></div>
+  <button class="bs-close" onclick="closeBottomSheet()">✕</button>
+  <div id="bs-content"></div>
+</div>
 
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -241,8 +265,18 @@ const EXTENT   = 24;
 function monthsToColor(m) {
   const t = Math.max(-1, Math.min(1, m / EXTENT));
   let r, g, b;
-  if (t >= 0) { r=Math.round(37+t*(80-37));  g=Math.round(42+t*(200-42)); b=Math.round(58+t*(140-58)); }
-  else        { const u=-t; r=Math.round(37+u*(220-37)); g=Math.round(42+u*(70-42));  b=Math.round(58+u*(60-58)); }
+  if (t >= 0) {
+    // Neutral grey → vivid teal/cyan for gains
+    r = Math.round(80  + t * (20  - 80));
+    g = Math.round(90  + t * (220 - 90));
+    b = Math.round(110 + t * (210 - 110));
+  } else {
+    const u = -t;
+    // Neutral grey → vivid red/orange for losses
+    r = Math.round(80  + u * (240 - 80));
+    g = Math.round(90  + u * (50  - 90));
+    b = Math.round(110 + u * (30  - 110));
+  }
   return `rgb(${r},${g},${b})`;
 }
 
@@ -437,8 +471,11 @@ function drawLegend() {
   });
 }
 
+// ── Device detection ──────────────────────────────────────────────────────────
+const isTouch = () => window.matchMedia('(pointer:coarse)').matches;
+
 // ── Build map (once, when dimensions are known) ───────────────────────────────
-let svgEl, regionPaths;
+let svgEl, regionPaths, mapG, zoomBehaviour, currentTransform = d3.zoomIdentity;
 
 function buildMap(W, H) {
   const proj = d3.geoAzimuthalEqualArea()
@@ -453,21 +490,73 @@ function buildMap(W, H) {
     .attr('width', W)
     .attr('height', H);
 
-  regionPaths = svgEl.append('g')
+  // All region paths live in a <g> that zoom transforms
+  mapG = svgEl.append('g');
+
+  regionPaths = mapG
     .selectAll('path')
     .data(geoFeatures, d => d.properties.NUTS_ID)
     .join('path')
       .attr('d', path)
       .attr('stroke', '#0d0f14')
       .attr('stroke-width', 0.4)
-      .attr('fill', '#1c2030')
+      .attr('fill', '#1c2030');
+
+  // ── Zoom behaviour ──
+  zoomBehaviour = d3.zoom()
+    .scaleExtent([1, 12])
+    .on('zoom', (event) => {
+      currentTransform = event.transform;
+      mapG.attr('transform', event.transform);
+      // Thin strokes at high zoom
+      regionPaths.attr('stroke-width', 0.4 / event.transform.k);
+      // Show/hide reset button
+      document.getElementById('zoom-reset-btn').style.display =
+        event.transform.k > 1.01 ? 'block' : 'none';
+    });
+
+  // On touch devices: only allow zoom via two fingers (filter single-touch pan
+  // so the page can still scroll with one finger outside the map)
+  if (isTouch()) {
+    zoomBehaviour.filter(event => {
+      // Allow wheel events and multi-touch; block single-pointer events
+      if (event.type === 'wheel') return true;
+      if (event.touches && event.touches.length >= 2) return true;
+      if (event.type === 'touchstart' && event.touches.length >= 2) return true;
+      // Allow mouse drag on desktop (non-touch pointer)
+      if (event.type.startsWith('mouse')) return true;
+      return false;
+    });
+  }
+
+  svgEl.call(zoomBehaviour);
+
+  // On touch: tap a region → bottom sheet
+  // On desktop: mousemove → floating tooltip
+  if (isTouch()) {
+    regionPaths
+      .on('touchend', onTap)
+      .on('click', onTap); // fallback
+  } else {
+    regionPaths
       .on('mousemove', onMouseMove)
       .on('mouseleave', () => { document.getElementById('tooltip').style.display='none'; });
+  }
+
+  // Set zoom hint text
+  document.getElementById('zoom-hint').textContent = isTouch()
+    ? 'Pinch to zoom · drag to pan · tap a region for details'
+    : 'Scroll to zoom · drag to pan · hover for details';
 
   // Store for resize
   svgEl._proj = proj; svgEl._path = path; svgEl._W = W; svgEl._H = H;
 
   updateMap();
+}
+
+// ── Reset zoom ────────────────────────────────────────────────────────────────
+function resetZoom() {
+  svgEl.transition().duration(400).call(zoomBehaviour.transform, d3.zoomIdentity);
 }
 
 // ── Update colours ────────────────────────────────────────────────────────────
@@ -497,8 +586,8 @@ function updateSubtitle() {
     `Months vs OLS trend (${selBlStart}–${BL_END}) · LE ${al} · ${selSex} · ${selYear}`;
 }
 
-// ── Tooltip ───────────────────────────────────────────────────────────────────
-function onMouseMove(event, d) {
+// ── Shared content builder ────────────────────────────────────────────────────
+function buildInfoHTML(d) {
   const geo = d.properties.NUTS_ID || '';
   const name = geoNames[geo] || d.properties.name || d.properties.na || geo;
   const e = computeExcess(geo);
@@ -517,14 +606,42 @@ function onMouseMove(event, d) {
       html += `<div class="tt-excess ${cls}">Δ ${s}${e.exM.toFixed(1)} months [${ls}${e.loM.toFixed(1)}, ${hs}${e.hiM.toFixed(1)}]</div>`;
     }
   }
+  return html;
+}
+
+// ── Desktop tooltip ───────────────────────────────────────────────────────────
+function onMouseMove(event, d) {
   const tt = document.getElementById('tooltip');
-  tt.innerHTML = html; tt.style.display = 'block';
+  tt.innerHTML = buildInfoHTML(d);
+  tt.style.display = 'block';
   const m=14, w=tt.offsetWidth, h=tt.offsetHeight;
   let x=event.clientX+m, y=event.clientY+m;
   if (x+w>window.innerWidth-8)  x=event.clientX-w-m;
   if (y+h>window.innerHeight-8) y=event.clientY-h-m;
   tt.style.left=x+'px'; tt.style.top=y+'px';
 }
+
+// ── Mobile bottom sheet ───────────────────────────────────────────────────────
+let tapMoved = false;
+function onTap(event, d) {
+  // Ignore if the user was panning/pinching
+  if (event.type === 'touchend' && tapMoved) { tapMoved = false; return; }
+  event.stopPropagation();
+  document.getElementById('bs-content').innerHTML = buildInfoHTML(d);
+  document.getElementById('bottom-sheet').classList.add('open');
+}
+function closeBottomSheet() {
+  document.getElementById('bottom-sheet').classList.remove('open');
+}
+// Close sheet on tap outside map
+document.addEventListener('touchstart', e => {
+  tapMoved = false;
+}, {passive:true});
+document.addEventListener('touchmove', () => { tapMoved = true; }, {passive:true});
+document.addEventListener('click', e => {
+  const bs = document.getElementById('bottom-sheet');
+  if (bs.classList.contains('open') && !bs.contains(e.target)) closeBottomSheet();
+});
 
 // ── Resize ────────────────────────────────────────────────────────────────────
 let rzTimer;
@@ -539,8 +656,14 @@ window.addEventListener('resize', () => {
     svgEl._proj.scale(Math.min(W,H)*1.4).translate([W*0.50,H*0.51]);
     const newPath = d3.geoPath().projection(svgEl._proj);
     svgEl.attr('width',W).attr('height',H);
+    // Recompute base paths then reapply current zoom transform
     regionPaths.attr('d', newPath);
+    mapG.attr('transform', currentTransform);
     svgEl._W=W; svgEl._H=H;
+    // Update hint in case orientation changed
+    document.getElementById('zoom-hint').textContent = isTouch()
+      ? 'Pinch to zoom · drag to pan · tap a region for details'
+      : 'Scroll to zoom · drag to pan · hover for details';
   }, 200);
 });
 
